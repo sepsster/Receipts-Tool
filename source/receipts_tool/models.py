@@ -32,6 +32,7 @@ class Profile:
     status: str = "Full-Time"
     parent1_name: str = ""
     parent2_name: str = ""
+    email: str = ""
     address_line1: str = ""
     address_line2: str = ""
     phone1: str = ""

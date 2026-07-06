@@ -111,6 +111,7 @@ def run_self_test() -> None:
                 child_name="Self Test Child",
                 status="Part-Time",
                 parent1_name="Self Test Parent",
+                email="selftest@example.com",
                 address_line1="123 Test St",
                 address_line2="Anytown, WA 98000",
                 phone1="(555) 010-1000",
@@ -245,6 +246,7 @@ def make_handler(
                 status=str(data.get("status", "")),
                 parent1_name=str(data.get("parent1_name", "")),
                 parent2_name=str(data.get("parent2_name", "")),
+                email=str(data.get("email", "")),
                 address_line1=str(data.get("address_line1", "")),
                 address_line2=str(data.get("address_line2", "")),
                 phone1=str(data.get("phone1", "")),
@@ -500,6 +502,7 @@ def profile_to_json(profile: Profile | None) -> dict:
         "status": profile.status,
         "parent1_name": profile.parent1_name,
         "parent2_name": profile.parent2_name,
+        "email": profile.email,
         "address_line1": profile.address_line1,
         "address_line2": profile.address_line2,
         "phone1": profile.phone1,
@@ -765,6 +768,7 @@ APP_HTML = r"""<!doctype html>
             <div><label>Parent/guardian 1</label><input id="parent1"></div>
             <div><label>Parent/guardian 2</label><input id="parent2"></div>
           </div>
+          <div><label>Email</label><input id="email" type="email" autocomplete="email"></div>
           <div class="row">
             <div><label>Address line 1</label><input id="address1"></div>
             <div><label>Address line 2</label><input id="address2"></div>
@@ -912,6 +916,7 @@ APP_HTML = r"""<!doctype html>
       $("status").value = "Full-Time";
       $("parent1").value = "";
       $("parent2").value = "";
+      $("email").value = "";
       $("address1").value = "";
       $("address2").value = "";
       $("phone1").value = "";
@@ -927,6 +932,7 @@ APP_HTML = r"""<!doctype html>
       $("status").value = normalizeStatus(profile.status);
       $("parent1").value = profile.parent1_name || "";
       $("parent2").value = profile.parent2_name || "";
+      $("email").value = profile.email || "";
       $("address1").value = profile.address_line1 || "";
       $("address2").value = profile.address_line2 || "";
       $("phone1").value = profile.phone1 || "";
@@ -972,6 +978,7 @@ APP_HTML = r"""<!doctype html>
           status: $("status").value,
           parent1_name: $("parent1").value,
           parent2_name: $("parent2").value,
+          email: $("email").value,
           address_line1: $("address1").value,
           address_line2: $("address2").value,
           phone1: $("phone1").value,

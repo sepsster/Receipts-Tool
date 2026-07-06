@@ -40,6 +40,7 @@ class ReceiptStore:
                     status TEXT NOT NULL DEFAULT '',
                     parent1_name TEXT NOT NULL DEFAULT '',
                     parent2_name TEXT NOT NULL DEFAULT '',
+                    email TEXT NOT NULL DEFAULT '',
                     address_line1 TEXT NOT NULL DEFAULT '',
                     address_line2 TEXT NOT NULL DEFAULT '',
                     phone1 TEXT NOT NULL DEFAULT '',
@@ -77,6 +78,9 @@ class ReceiptStore:
                 );
                 """
             )
+            profile_columns = {row["name"] for row in conn.execute("PRAGMA table_info(profiles)").fetchall()}
+            if "email" not in profile_columns:
+                conn.execute("ALTER TABLE profiles ADD COLUMN email TEXT NOT NULL DEFAULT ''")
             for key, value in DEFAULT_SETTINGS.items():
                 conn.execute(
                     "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
@@ -132,6 +136,7 @@ class ReceiptStore:
             profile.status.strip(),
             profile.parent1_name.strip(),
             profile.parent2_name.strip(),
+            profile.email.strip(),
             profile.address_line1.strip(),
             profile.address_line2.strip(),
             profile.phone1.strip(),
@@ -146,10 +151,10 @@ class ReceiptStore:
                     """
                     INSERT INTO profiles (
                         child_name, status, parent1_name, parent2_name,
-                        address_line1, address_line2, phone1, phone2,
+                        email, address_line1, address_line2, phone1, phone2,
                         active, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     params + (timestamp,),
                 )
@@ -159,7 +164,7 @@ class ReceiptStore:
                     """
                     UPDATE profiles
                     SET child_name = ?, status = ?, parent1_name = ?, parent2_name = ?,
-                        address_line1 = ?, address_line2 = ?, phone1 = ?, phone2 = ?,
+                        email = ?, address_line1 = ?, address_line2 = ?, phone1 = ?, phone2 = ?,
                         active = ?, updated_at = ?
                     WHERE id = ?
                     """,
@@ -275,6 +280,7 @@ class ReceiptStore:
             status=row["status"],
             parent1_name=row["parent1_name"],
             parent2_name=row["parent2_name"],
+            email=row["email"],
             address_line1=row["address_line1"],
             address_line2=row["address_line2"],
             phone1=row["phone1"],

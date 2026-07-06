@@ -32,6 +32,7 @@ def main() -> None:
         status="Part-Time",
         parent1_name="Sample Parent",
         parent2_name="Second Parent",
+        email="sample.parent@example.com",
         address_line1="123 Main St",
         address_line2="Anytown, WA 98000",
         phone1="(555) 010-1000",
@@ -40,6 +41,7 @@ def main() -> None:
     profile_id = store.save_profile(profile)
     saved = store.get_profile(profile_id)
     assert saved is not None
+    assert saved.email == "sample.parent@example.com"
 
     payments = [
         Payment(parse_payment_date("04/06/2026"), parse_money_to_cents("375"), row_order=1),

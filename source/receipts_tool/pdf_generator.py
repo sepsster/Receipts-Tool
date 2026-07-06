@@ -155,6 +155,7 @@ def _draw_receipt(
             profile.address_line1,
             profile.address_line2,
             "   |   ".join([p for p in (profile.phone1, profile.phone2) if p.strip()]),
+            profile.email,
         ],
         font_regular=font_regular,
         font_bold=font_bold,
