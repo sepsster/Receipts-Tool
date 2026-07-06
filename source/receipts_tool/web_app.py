@@ -226,6 +226,9 @@ def make_handler(
                 if parsed.path == "/api/update":
                     self._update_app()
                     return
+                if parsed.path == "/api/check-update":
+                    self._check_update()
+                    return
                 if parsed.path == "/api/shutdown":
                     self._send_json({"ok": True})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -356,6 +359,9 @@ def make_handler(
             self._send_json({"ok": True, **result})
             if result.get("restartRequired"):
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+        def _check_update(self) -> None:
+            self._send_json(update_checker.check_now() if update_checker else {})
 
         def _save_logo(self) -> None:
             data = self._read_json()
@@ -896,6 +902,7 @@ APP_HTML = r"""<!doctype html>
         <h2>App Updates <span class="update-badge" id="updateBadge" hidden>Update available</span></h2>
         <div class="sub" id="updateDescription"></div>
         <div class="actions" style="justify-content:flex-start">
+          <button id="checkUpdateBtn">Check for Updates</button>
           <button class="success" id="updateBtn">Update From GitHub</button>
         </div>
         <div id="updateStatus" class="status"></div>
@@ -1278,7 +1285,8 @@ APP_HTML = r"""<!doctype html>
       $("settingsUpdateDot").hidden = !isAvailable;
       $("updateBadge").hidden = !isAvailable;
       $("updateDescription").textContent = update.message || "";
-      $("updateBtn").disabled = !update.supported;
+      $("checkUpdateBtn").disabled = !update.supported || !!update.checking;
+      $("updateBtn").disabled = !update.supported || !!update.checking;
       setStatus("updateStatus", update.message || "", isAvailable ? "ok" : (update.state === "error" ? "error" : ""));
       if (isAvailable && !state.updateNotified) {
         showUpdateToast();
@@ -1299,6 +1307,22 @@ APP_HTML = r"""<!doctype html>
         }
       } catch (error) {
         setStatus("updateStatus", error.message, "error");
+      }
+    }
+
+    async function checkForUpdates() {
+      try {
+        state.updateNotified = false;
+        $("checkUpdateBtn").disabled = true;
+        setStatus("updateStatus", "Checking GitHub for updates...");
+        state.meta.update = await api("/api/check-update", { method: "POST", body: "{}" });
+        renderUpdateInfo();
+        if (state.meta.update.checking) {
+          setTimeout(refreshUpdateStatus, 2000);
+        }
+      } catch (error) {
+        setStatus("updateStatus", error.message, "error");
+        $("checkUpdateBtn").disabled = !(state.meta.update && state.meta.update.supported);
       }
     }
 
@@ -1341,6 +1365,7 @@ APP_HTML = r"""<!doctype html>
       const file = $("logoFile").files[0];
       if (file) $("logoPreview").src = URL.createObjectURL(file);
     };
+    $("checkUpdateBtn").onclick = checkForUpdates;
     $("updateBtn").onclick = updateApp;
     $("toastDismissBtn").onclick = () => $("updateToast").hidden = true;
     $("toastSettingsBtn").onclick = () => {

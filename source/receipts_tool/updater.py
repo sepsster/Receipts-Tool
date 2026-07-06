@@ -35,6 +35,9 @@ class UpdateCheckState:
         self._status = _base_update_status()
 
     def start(self) -> None:
+        self.check_now()
+
+    def check_now(self) -> dict[str, object]:
         if not update_supported():
             self._set_status(
                 state="unavailable",
@@ -42,15 +45,30 @@ class UpdateCheckState:
                 update_available=False,
                 checking=False,
             )
-            return
+            return self.snapshot()
 
-        self._set_status(
-            state="checking",
-            message="Checking GitHub for updates...",
-            update_available=False,
-            checking=True,
-        )
+        with self._lock:
+            if self._status.get("checking"):
+                return self._status.copy()
+            old_downloaded_path = self._downloaded_path
+            self._downloaded_path = None
+            status = _base_update_status()
+            status.update(
+                {
+                    "state": "checking",
+                    "message": "Checking GitHub for updates...",
+                    "updateAvailable": False,
+                    "checking": True,
+                    "checkedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+            self._status = status
+
+        if old_downloaded_path:
+            old_downloaded_path.unlink(missing_ok=True)
+
         threading.Thread(target=self._check_for_update, daemon=True).start()
+        return status.copy()
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
