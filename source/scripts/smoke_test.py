@@ -10,12 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from receipts_tool.models import Payment, Profile, format_money, parse_payment_date, parse_money_to_cents
-from receipts_tool.paths import APP_DIR_ENV, get_paths
+from receipts_tool.paths import APP_DIR_ENV, AppPaths, get_paths
 from receipts_tool.pdf_generator import generate_receipt_pdf
 from receipts_tool.storage import ReceiptStore
+from receipts_tool.web_app import ensure_persistent_logo
 
 
 def main() -> None:
+    assert_logo_persistence()
+
     tmp_root = ROOT / "tmp" / "smoke_portable_app"
     if tmp_root.exists():
         shutil.rmtree(tmp_root)
@@ -102,6 +105,30 @@ def main() -> None:
 
     render_pdf(pdf_path, ROOT / "tmp" / "pdfs" / "smoke_receipt")
     print(f"Smoke test passed: {pdf_path}")
+
+
+def assert_logo_persistence() -> None:
+    tmp_root = ROOT / "tmp" / "logo_persistence_check"
+    if tmp_root.exists():
+        shutil.rmtree(tmp_root)
+
+    paths = AppPaths(
+        app_dir=tmp_root,
+        data_dir=tmp_root / "data",
+        backup_dir=tmp_root / "backups",
+        receipts_dir=tmp_root / "receipts",
+        assets_dir=tmp_root / "assets",
+        db_path=tmp_root / "data" / "receipts.sqlite",
+        logo_path=ROOT / "assets" / "logo.png",
+    )
+    logo_path = ensure_persistent_logo(paths)
+    assert logo_path == tmp_root / "assets" / "logo.png"
+    assert logo_path.exists() and logo_path.stat().st_size > 0
+
+    custom_bytes = b"custom logo placeholder"
+    logo_path.write_bytes(custom_bytes)
+    ensure_persistent_logo(paths)
+    assert logo_path.read_bytes() == custom_bytes
 
 
 def render_pdf(pdf_path: Path, output_prefix: Path) -> None:

@@ -22,7 +22,7 @@ The app creates these folders beside the source tree during development, or besi
 
 Generated receipt PDFs use PDF owner-password permissions so they open normally but standard PDF editors cannot change or annotate them.
 
-Users can upload a custom receipt logo from `Settings`. The app stores that image at `assets/logo.png` beside the executable, so app updates do not overwrite it.
+Users can upload a custom receipt logo from `Settings`. On first run, the app copies its bundled stock logo to `assets/logo.png` beside the executable if no logo is already there. App updates replace only the executable, so they preserve whatever logo is in that file.
 
 ## Build The Portable App
 

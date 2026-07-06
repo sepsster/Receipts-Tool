@@ -49,6 +49,7 @@ def main() -> None:
     no_browser = "--no-browser" in sys.argv
     port_file = _arg_value("--port-file")
     paths = get_paths()
+    ensure_persistent_logo(paths)
     store = ReceiptStore(paths)
     update_checker = UpdateCheckState(paths)
     update_checker.start()
@@ -456,6 +457,26 @@ def current_logo_path(paths: AppPaths) -> Path:
     if custom_logo.exists():
         return custom_logo
     return paths.logo_path
+
+
+def ensure_persistent_logo(paths: AppPaths) -> Path:
+    custom_logo = paths.assets_dir / "logo.png"
+    if custom_logo.exists():
+        return custom_logo
+
+    bundled_logo = paths.logo_path
+    if not bundled_logo.exists():
+        return custom_logo
+
+    try:
+        if bundled_logo.resolve() == custom_logo.resolve():
+            return custom_logo
+    except OSError:
+        pass
+
+    paths.assets_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(bundled_logo, custom_logo)
+    return custom_logo
 
 
 def save_logo_upload(paths: AppPaths, data_url: str) -> Path:
