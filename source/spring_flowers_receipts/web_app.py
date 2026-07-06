@@ -29,7 +29,7 @@ from .models import (
 from .paths import AppPaths, get_paths
 from .pdf_generator import MAX_PAYMENT_ROWS, generate_receipt_pdf
 from .storage import ReceiptStore
-from .updater import UpdateError, get_update_info, prepare_self_update
+from .updater import UpdateCheckState, UpdateError, prepare_self_update
 
 
 def main() -> None:
@@ -41,8 +41,10 @@ def main() -> None:
     port_file = _arg_value("--port-file")
     paths = get_paths()
     store = ReceiptStore(paths)
+    update_checker = UpdateCheckState(paths)
+    update_checker.start()
     last_heartbeat = {"value": time.monotonic()}
-    handler = make_handler(paths, store, last_heartbeat)
+    handler = make_handler(paths, store, last_heartbeat, update_checker)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     host, port = server.server_address
     url = f"http://{host}:{port}/"
@@ -134,7 +136,12 @@ def run_self_test() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def make_handler(paths: AppPaths, store: ReceiptStore, last_heartbeat: dict[str, float] | None = None):
+def make_handler(
+    paths: AppPaths,
+    store: ReceiptStore,
+    last_heartbeat: dict[str, float] | None = None,
+    update_checker: UpdateCheckState | None = None,
+):
     class SpringFlowersHandler(BaseHTTPRequestHandler):
         server_version = "SpringFlowersReceipts/0.1"
 
@@ -165,9 +172,12 @@ def make_handler(paths: AppPaths, store: ReceiptStore, last_heartbeat: dict[str,
                         "maxPaymentRows": MAX_PAYMENT_ROWS,
                         "appDir": str(paths.app_dir),
                         "receiptsDir": str(paths.receipts_dir),
-                        "update": get_update_info(),
+                        "update": update_checker.snapshot() if update_checker else {},
                     }
                 )
+                return
+            if parsed.path == "/api/update-status":
+                self._send_json(update_checker.snapshot() if update_checker else {})
                 return
             if parsed.path == "/receipt-pdf":
                 self._serve_receipt_file(parsed.query)
@@ -323,7 +333,8 @@ def make_handler(paths: AppPaths, store: ReceiptStore, last_heartbeat: dict[str,
             self._send_json({"ok": True})
 
         def _update_app(self) -> None:
-            result = prepare_self_update(paths)
+            checked_update = update_checker.take_downloaded_update() if update_checker else None
+            result = prepare_self_update(paths, checked_update)
             self._send_json({"ok": True, **result})
             if result.get("restartRequired"):
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -580,6 +591,43 @@ APP_HTML = r"""<!doctype html>
     .status.error { color: #b42318; }
     .status.ok { color: var(--green); }
     .footer-actions { display: flex; gap: 10px; justify-content: space-between; align-items: center; }
+    .tab-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-left: 6px;
+      background: var(--accent);
+      vertical-align: middle;
+    }
+    .update-badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #e3c57f;
+      border-radius: 999px;
+      padding: 3px 8px;
+      margin-left: 8px;
+      font-size: 12px;
+      color: #6c4d08;
+      background: #fff8e8;
+    }
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 10;
+      width: min(360px, calc(100vw - 44px));
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--accent);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 16px 36px rgba(32, 33, 36, .18);
+      padding: 14px;
+    }
+    .toast-title { font-weight: 750; margin-bottom: 4px; }
+    .toast-body { color: var(--muted); line-height: 1.35; }
+    .toast-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    [hidden] { display: none !important; }
     @media (max-width: 860px) {
       header { align-items: flex-start; flex-direction: column; }
       .grid, .row { grid-template-columns: 1fr; }
@@ -601,7 +649,7 @@ APP_HTML = r"""<!doctype html>
       <button class="tab active" data-view="profiles">Profiles</button>
       <button class="tab" data-view="generate">Generate Receipt</button>
       <button class="tab" data-view="history">History</button>
-      <button class="tab" data-view="settings">Settings</button>
+      <button class="tab" data-view="settings">Settings<span class="tab-dot" id="settingsUpdateDot" hidden></span></button>
     </nav>
 
     <section id="profiles" class="view active">
@@ -701,7 +749,7 @@ APP_HTML = r"""<!doctype html>
         <div id="settingsStatus" class="status"></div>
       </div>
       <div class="panel" style="margin-top:16px">
-        <h2>App Updates</h2>
+        <h2>App Updates <span class="update-badge" id="updateBadge" hidden>Update available</span></h2>
         <div class="sub" id="updateDescription"></div>
         <div class="actions" style="justify-content:flex-start">
           <button class="success" id="updateBtn">Update From GitHub</button>
@@ -711,8 +759,17 @@ APP_HTML = r"""<!doctype html>
     </section>
   </main>
 
+  <div class="toast" id="updateToast" hidden>
+    <div class="toast-title">Update Available</div>
+    <div class="toast-body">A newer version is ready to install from GitHub.</div>
+    <div class="toast-actions">
+      <button id="toastDismissBtn">Dismiss</button>
+      <button class="success" id="toastSettingsBtn">Open Settings</button>
+    </div>
+  </div>
+
   <script>
-    const state = { profiles: [], history: [], meta: {}, paymentRows: [] };
+    const state = { profiles: [], history: [], meta: {}, paymentRows: [], updateNotified: false };
     const $ = (id) => document.getElementById(id);
 
     async function api(path, options = {}) {
@@ -971,9 +1028,32 @@ APP_HTML = r"""<!doctype html>
 
     function renderUpdateInfo() {
       const update = state.meta.update || {};
+      const isAvailable = !!update.updateAvailable;
+      $("settingsUpdateDot").hidden = !isAvailable;
+      $("updateBadge").hidden = !isAvailable;
       $("updateDescription").textContent = update.message || "";
-      $("updateBtn").disabled = !update.available;
-      setStatus("updateStatus", update.available ? "" : (update.message || ""), "");
+      $("updateBtn").disabled = !update.supported;
+      setStatus("updateStatus", update.message || "", isAvailable ? "ok" : (update.state === "error" ? "error" : ""));
+      if (isAvailable && !state.updateNotified) {
+        showUpdateToast();
+        state.updateNotified = true;
+      }
+    }
+
+    function showUpdateToast() {
+      $("updateToast").hidden = false;
+    }
+
+    async function refreshUpdateStatus() {
+      try {
+        state.meta.update = await api("/api/update-status");
+        renderUpdateInfo();
+        if (state.meta.update.checking) {
+          setTimeout(refreshUpdateStatus, 2000);
+        }
+      } catch (error) {
+        setStatus("updateStatus", error.message, "error");
+      }
     }
 
     async function updateApp() {
@@ -993,7 +1073,7 @@ APP_HTML = r"""<!doctype html>
         }, 300);
       } catch (error) {
         setStatus("updateStatus", error.message, "error");
-        $("updateBtn").disabled = !(state.meta.update && state.meta.update.available);
+        $("updateBtn").disabled = !(state.meta.update && state.meta.update.supported);
       }
     }
 
@@ -1011,6 +1091,11 @@ APP_HTML = r"""<!doctype html>
     $("refreshHistoryBtn").onclick = loadHistory;
     $("saveSettingsBtn").onclick = saveSettings;
     $("updateBtn").onclick = updateApp;
+    $("toastDismissBtn").onclick = () => $("updateToast").hidden = true;
+    $("toastSettingsBtn").onclick = () => {
+      $("updateToast").hidden = true;
+      showView("settings");
+    };
     $("openReceiptsBtn").onclick = () => api("/api/open", { method: "POST", body: JSON.stringify({ kind: "receipts" }) });
     $("quitBtn").onclick = async () => {
       await api("/api/shutdown", { method: "POST", body: "{}" });
@@ -1029,6 +1114,7 @@ APP_HTML = r"""<!doctype html>
       $("receiptMonth").innerHTML = state.meta.months.map((name, index) => `<option value="${index + 1}">${name}</option>`).join("");
       $("receiptMonth").value = state.meta.currentMonth;
       renderUpdateInfo();
+      refreshUpdateStatus();
       await Promise.all([loadProfiles(), loadSettings(), loadHistory()]);
       addPaymentRow();
     }

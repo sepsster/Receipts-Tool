@@ -40,7 +40,7 @@ Move `Payment Receipt Generator Tool.exe` anywhere you want. Data and generated 
 
 ## App Updates
 
-The built Windows app has a `Settings` -> `Update From GitHub` button. It downloads the latest top-level `Payment Receipt Generator Tool.exe` from the configured GitHub URL, closes the app, replaces the running executable, and reopens it.
+The built Windows app checks GitHub for updates in the background each time it opens. If the top-level `Payment Receipt Generator Tool.exe` on GitHub differs from the running executable, the app marks the `Settings` tab and shows an in-app notification. The `Settings` -> `Update From GitHub` button downloads the latest executable, closes the app, replaces the running executable, and reopens it.
 
 By default, the updater downloads from the `master` branch of `sepsster/Spring-Flowers-Childcare-Receipts`. That file must be publicly reachable for an end user without GitHub credentials. To point a build at another download URL, set `SPRING_FLOWERS_UPDATE_URL` before launching the app.
 

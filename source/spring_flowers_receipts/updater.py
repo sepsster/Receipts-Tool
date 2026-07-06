@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -26,29 +27,139 @@ class UpdateError(RuntimeError):
     pass
 
 
+class UpdateCheckState:
+    def __init__(self, paths: AppPaths) -> None:
+        self.paths = paths
+        self._lock = threading.Lock()
+        self._downloaded_path: Path | None = None
+        self._status = _base_update_status()
+
+    def start(self) -> None:
+        if not update_supported():
+            self._set_status(
+                state="unavailable",
+                message="Updates are available after the app is built as the Windows executable.",
+                update_available=False,
+                checking=False,
+            )
+            return
+
+        self._set_status(
+            state="checking",
+            message="Checking GitHub for updates...",
+            update_available=False,
+            checking=True,
+        )
+        threading.Thread(target=self._check_for_update, daemon=True).start()
+
+    def snapshot(self) -> dict[str, object]:
+        with self._lock:
+            return self._status.copy()
+
+    def take_downloaded_update(self) -> Path | None:
+        with self._lock:
+            path = self._downloaded_path
+            self._downloaded_path = None
+        if path and path.exists():
+            return path
+        return None
+
+    def _check_for_update(self) -> None:
+        downloaded_exe: Path | None = None
+        try:
+            current_exe = current_executable()
+            updates_dir = self.paths.app_dir / "tmp" / "updates"
+            updates_dir.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            downloaded_exe = updates_dir / f"checked-{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.exe"
+            download_executable(get_update_url(), downloaded_exe)
+
+            if sha256_file(downloaded_exe) == sha256_file(current_exe):
+                downloaded_exe.unlink(missing_ok=True)
+                self._set_status(
+                    state="current",
+                    message="This app is up to date.",
+                    update_available=False,
+                    checking=False,
+                )
+                return
+
+            with self._lock:
+                self._downloaded_path = downloaded_exe
+            self._set_status(
+                state="available",
+                message="A newer version is available on GitHub.",
+                update_available=True,
+                checking=False,
+            )
+        except UpdateError as exc:
+            if downloaded_exe:
+                downloaded_exe.unlink(missing_ok=True)
+            self._set_status(
+                state="error",
+                message=f"Could not check for updates: {exc}",
+                update_available=False,
+                checking=False,
+            )
+        except Exception as exc:
+            if downloaded_exe:
+                downloaded_exe.unlink(missing_ok=True)
+            self._set_status(
+                state="error",
+                message=f"Could not check for updates: {exc}",
+                update_available=False,
+                checking=False,
+            )
+
+    def _set_status(
+        self,
+        *,
+        state: str,
+        message: str,
+        update_available: bool,
+        checking: bool,
+    ) -> None:
+        status = _base_update_status()
+        status.update(
+            {
+                "state": state,
+                "message": message,
+                "updateAvailable": update_available,
+                "checking": checking,
+                "checkedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        with self._lock:
+            self._status = status
+
+
+def update_supported() -> bool:
+    return sys.platform.startswith("win") and getattr(sys, "frozen", False)
+
+
 def get_update_info() -> dict[str, object]:
-    available = sys.platform.startswith("win") and getattr(sys, "frozen", False)
-    if available:
+    status = _base_update_status()
+    if status["supported"]:
         message = "Ready to download the latest app from GitHub."
     else:
         message = "Updates are available after the app is built as the Windows executable."
 
-    return {
-        "available": available,
-        "sourceUrl": get_update_url(),
-        "message": message,
-    }
+    status["message"] = message
+    return status
 
 
-def prepare_self_update(paths: AppPaths) -> dict[str, object]:
+def prepare_self_update(paths: AppPaths, downloaded_exe: Path | None = None) -> dict[str, object]:
     current_exe = current_executable()
     update_url = get_update_url()
     updates_dir = paths.app_dir / "tmp" / "updates"
     updates_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    downloaded_exe = updates_dir / f"{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.exe"
-    download_executable(update_url, downloaded_exe)
+    if downloaded_exe is None or not downloaded_exe.exists():
+        downloaded_exe = updates_dir / f"{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.exe"
+        download_executable(update_url, downloaded_exe)
+    else:
+        validate_downloaded_exe(downloaded_exe)
 
     if sha256_file(downloaded_exe) == sha256_file(current_exe):
         downloaded_exe.unlink(missing_ok=True)
@@ -75,6 +186,20 @@ def prepare_self_update(paths: AppPaths) -> dict[str, object]:
 
 def get_update_url() -> str:
     return os.environ.get(UPDATE_URL_ENV, DEFAULT_UPDATE_URL).strip() or DEFAULT_UPDATE_URL
+
+
+def _base_update_status() -> dict[str, object]:
+    supported = update_supported()
+    return {
+        "supported": supported,
+        "available": supported,
+        "updateAvailable": False,
+        "checking": False,
+        "state": "idle" if supported else "unavailable",
+        "sourceUrl": get_update_url(),
+        "message": "",
+        "checkedAt": "",
+    }
 
 
 def current_executable() -> Path:
