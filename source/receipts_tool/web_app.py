@@ -639,10 +639,19 @@ APP_HTML = r"""<!doctype html>
     button.danger { background: #fff5f5; border-color: #f0b4b4; color: #9f1c1c; }
     button:disabled { cursor: not-allowed; opacity: .55; }
     .list { display: grid; gap: 8px; }
-    .list button { text-align: left; display: block; width: 100%; }
-    .list button.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(223,116,119,.18); }
-    .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; background: #eef5f1; color: var(--green); margin-left: 6px; }
+    .list button { text-align: left; display: grid; gap: 4px; width: 100%; }
+    .list button.selected {
+      border-color: var(--accent);
+      background: #fff8f8;
+      box-shadow: 0 0 0 2px rgba(223,116,119,.24);
+    }
+    .profile-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; background: #eef5f1; color: var(--green); }
+    .pill.selected-pill { background: #ffe8ea; color: #a33a3d; }
+    .pill.inactive-pill { background: #f1f3f5; color: #58616d; }
     .inactive { opacity: .62; }
+    .check-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+    .check-row input { width: auto; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; }
     th { color: var(--muted); font-size: 13px; }
@@ -777,7 +786,7 @@ APP_HTML = r"""<!doctype html>
             <div><label>Phone 1</label><input id="phone1"></div>
             <div><label>Phone 2</label><input id="phone2"></div>
           </div>
-          <label><input id="active" type="checkbox" style="width:auto" checked> Active profile</label>
+          <label class="check-row"><input id="active" type="checkbox" checked> Use this profile for receipts</label>
           <div class="actions">
             <button class="primary" id="saveProfileBtn">Save Profile</button>
           </div>
@@ -877,7 +886,7 @@ APP_HTML = r"""<!doctype html>
   </div>
 
   <script>
-    const state = { profiles: [], history: [], meta: {}, paymentRows: [], updateNotified: false };
+    const state = { profiles: [], history: [], meta: {}, paymentRows: [], updateNotified: false, selectedProfileId: null };
     const $ = (id) => document.getElementById(id);
 
     async function api(path, options = {}) {
@@ -922,11 +931,13 @@ APP_HTML = r"""<!doctype html>
       $("phone1").value = "";
       $("phone2").value = "";
       $("active").checked = true;
-      document.querySelectorAll("#profileList button").forEach(btn => btn.classList.remove("selected"));
+      state.selectedProfileId = null;
+      renderProfiles();
       setStatus("profileStatus", "");
     }
 
     function loadProfile(profile) {
+      state.selectedProfileId = Number(profile.id) || null;
       $("profileId").value = profile.id || "";
       $("childName").value = profile.child_name || "";
       $("status").value = normalizeStatus(profile.status);
@@ -938,7 +949,7 @@ APP_HTML = r"""<!doctype html>
       $("phone1").value = profile.phone1 || "";
       $("phone2").value = profile.phone2 || "";
       $("active").checked = !!profile.active;
-      document.querySelectorAll("#profileList button").forEach(btn => btn.classList.toggle("selected", Number(btn.dataset.id) === profile.id));
+      renderProfiles();
     }
 
     async function loadProfiles() {
@@ -957,11 +968,41 @@ APP_HTML = r"""<!doctype html>
       state.profiles.forEach(profile => {
         const btn = document.createElement("button");
         btn.dataset.id = profile.id;
-        btn.className = profile.active ? "" : "inactive";
-        btn.innerHTML = `<strong>${escapeHtml(profile.child_name)}</strong><span class="pill">${escapeHtml(profile.status || "No status")}</span><div class="sub">${escapeHtml(profile.parent1_name || "")}</div>`;
-        btn.onclick = () => loadProfile(profile);
+        const isSelected = Number(profile.id) === state.selectedProfileId;
+        btn.className = [isSelected ? "selected" : "", profile.active ? "" : "inactive"].filter(Boolean).join(" ");
+        const activeBadge = isSelected && profile.active
+          ? `<span class="pill selected-pill">Selected / Active</span>`
+          : (profile.active ? `<span class="pill">Active</span>` : `<span class="pill inactive-pill">Hidden</span>`);
+        btn.innerHTML = `
+          <div class="profile-title">
+            <strong>${escapeHtml(profile.child_name)}</strong>
+            <span class="pill">${escapeHtml(profile.status || "No status")}</span>
+            ${activeBadge}
+          </div>
+          <div class="sub">${escapeHtml(profile.parent1_name || "")}</div>
+        `;
+        btn.onclick = () => selectProfile(profile);
         list.appendChild(btn);
       });
+    }
+
+    async function selectProfile(profile) {
+      const selectedProfile = { ...profile, active: true };
+      const index = state.profiles.findIndex(item => Number(item.id) === Number(profile.id));
+      if (index >= 0) state.profiles[index] = selectedProfile;
+      loadProfile(selectedProfile);
+      if (profile.active) return;
+
+      try {
+        const saved = await api("/api/profiles", { method: "POST", body: JSON.stringify(selectedProfile) });
+        await loadProfiles();
+        loadProfile(saved);
+        setStatus("profileStatus", "Profile selected and active.", "ok");
+      } catch (error) {
+        if (index >= 0) state.profiles[index] = profile;
+        loadProfile(profile);
+        setStatus("profileStatus", error.message, "error");
+      }
     }
 
     function renderProfileOptions() {
