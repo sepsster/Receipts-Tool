@@ -9,10 +9,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from spring_flowers_receipts.models import Payment, Profile, format_money, parse_payment_date, parse_money_to_cents
-from spring_flowers_receipts.paths import APP_DIR_ENV, get_paths
-from spring_flowers_receipts.pdf_generator import generate_receipt_pdf
-from spring_flowers_receipts.storage import ReceiptStore
+from receipts_tool.models import Payment, Profile, format_money, parse_payment_date, parse_money_to_cents
+from receipts_tool.paths import APP_DIR_ENV, get_paths
+from receipts_tool.pdf_generator import generate_receipt_pdf
+from receipts_tool.storage import ReceiptStore
 
 
 def main() -> None:
@@ -28,14 +28,14 @@ def main() -> None:
     store = ReceiptStore(paths)
 
     profile = Profile(
-        child_name="Adaure Parks",
+        child_name="Sample Child",
         status="Part-Time",
-        parent1_name="Brett Parks",
-        parent2_name="Jacqueline Parks",
-        address_line1="7096 44th PL West",
-        address_line2="Mukilteo, WA 98275",
-        phone1="(773) 573-8876",
-        phone2="(360) 590-4556",
+        parent1_name="Sample Parent",
+        parent2_name="Second Parent",
+        address_line1="123 Main St",
+        address_line2="Anytown, WA 98000",
+        phone1="(555) 010-1000",
+        phone2="(555) 010-2000",
     )
     profile_id = store.save_profile(profile)
     saved = store.get_profile(profile_id)
@@ -44,15 +44,15 @@ def main() -> None:
     payments = [
         Payment(parse_payment_date("04/06/2026"), parse_money_to_cents("375"), row_order=1),
         Payment(parse_payment_date("04/06/2026"), parse_money_to_cents("50"), row_order=2),
-        Payment(parse_payment_date("04/13/2026"), parse_money_to_cents("425"), row_order=3),
-        Payment(parse_payment_date("04/21/2026"), parse_money_to_cents("425"), row_order=4),
+        Payment(parse_payment_date("04/13/2026"), parse_money_to_cents("400"), row_order=3),
+        Payment(parse_payment_date("04/21/2026"), parse_money_to_cents("450"), row_order=4),
         Payment(parse_payment_date("04/28/2026"), parse_money_to_cents("850"), marker="*", row_order=5),
     ]
     total = sum(payment.amount_cents for payment in payments)
     assert format_money(total) == "$2,125.00"
 
     note = "Payment 5 dated Apr 28th, 2026 is for 4 days of care in April 2025 and 6 days in May 2026"
-    pdf_path = paths.app_dir / "receipts" / "2026" / "Adaure - smoke.pdf"
+    pdf_path = paths.app_dir / "receipts" / "2026" / "Sample - smoke.pdf"
     generate_receipt_pdf(
         output_path=pdf_path,
         profile=saved,
@@ -65,11 +65,11 @@ def main() -> None:
     )
     assert pdf_path.exists() and pdf_path.stat().st_size > 10_000
     assert_pdf_edit_protected(pdf_path)
-    store.save_receipt(profile_id, 4, 2026, Path("receipts") / "2026" / "Adaure - smoke.pdf", note, payments)
+    store.save_receipt(profile_id, 4, 2026, Path("receipts") / "2026" / "Sample - smoke.pdf", note, payments)
     assert store.receipt_exists(profile_id, 4, 2026)
     assert len(store.receipt_history()) == 1
 
-    no_note_path = paths.app_dir / "receipts" / "2026" / "Adaure - no-note.pdf"
+    no_note_path = paths.app_dir / "receipts" / "2026" / "Sample - no-note.pdf"
     generate_receipt_pdf(
         output_path=no_note_path,
         profile=saved,

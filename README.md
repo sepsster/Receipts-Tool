@@ -1,4 +1,4 @@
-# Spring Flowers Payment Receipt Tool
+# Receipts Tool
 
 Double-click `Payment Receipt Generator Tool.exe` to open the receipt generator.
 

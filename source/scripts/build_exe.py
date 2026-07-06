@@ -36,7 +36,7 @@ def main() -> None:
         str(PROJECT_ROOT),
         "--add-data",
         f"{SOURCE_ROOT / 'assets' / 'logo.png'}{add_data_separator}assets",
-        str(SOURCE_ROOT / "spring_flowers_receipts_launcher.py"),
+        str(SOURCE_ROOT / "receipts_tool_launcher.py"),
     ]
     subprocess.run(cmd, cwd=SOURCE_ROOT, check=True)
 

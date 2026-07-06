@@ -1,7 +1,7 @@
 [project]
-name = "spring-flowers-receipts"
+name = "receipts-tool"
 version = "0.1.0"
-description = "Portable local receipt generator for Spring Flowers Childcare."
+description = "Portable local receipt generator."
 requires-python = ">=3.11"
 dependencies = [
   "Pillow",
