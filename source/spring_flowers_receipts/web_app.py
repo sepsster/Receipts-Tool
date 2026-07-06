@@ -29,6 +29,7 @@ from .models import (
 from .paths import AppPaths, get_paths
 from .pdf_generator import MAX_PAYMENT_ROWS, generate_receipt_pdf
 from .storage import ReceiptStore
+from .updater import UpdateError, get_update_info, prepare_self_update
 
 
 def main() -> None:
@@ -164,6 +165,7 @@ def make_handler(paths: AppPaths, store: ReceiptStore, last_heartbeat: dict[str,
                         "maxPaymentRows": MAX_PAYMENT_ROWS,
                         "appDir": str(paths.app_dir),
                         "receiptsDir": str(paths.receipts_dir),
+                        "update": get_update_info(),
                     }
                 )
                 return
@@ -194,12 +196,17 @@ def make_handler(paths: AppPaths, store: ReceiptStore, last_heartbeat: dict[str,
                 if parsed.path == "/api/delete-receipt":
                     self._delete_receipt()
                     return
+                if parsed.path == "/api/update":
+                    self._update_app()
+                    return
                 if parsed.path == "/api/shutdown":
                     self._send_json({"ok": True})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
                 self._send_error(HTTPStatus.NOT_FOUND, "Not found.")
             except ValueError as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            except UpdateError as exc:
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
             except Exception as exc:
                 self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
@@ -314,6 +321,12 @@ def make_handler(paths: AppPaths, store: ReceiptStore, last_heartbeat: dict[str,
             if target.exists():
                 target.unlink()
             self._send_json({"ok": True})
+
+        def _update_app(self) -> None:
+            result = prepare_self_update(paths)
+            self._send_json({"ok": True, **result})
+            if result.get("restartRequired"):
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
 
         def _serve_receipt_file(self, query: str) -> None:
             params = parse_qs(query)
@@ -534,6 +547,7 @@ APP_HTML = r"""<!doctype html>
     button.success { background: var(--green); border-color: var(--green); color: #fff; }
     button.warn { background: #fff8e8; border-color: #e3c57f; color: #6c4d08; }
     button.danger { background: #fff5f5; border-color: #f0b4b4; color: #9f1c1c; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
     .list { display: grid; gap: 8px; }
     .list button { text-align: left; display: block; width: 100%; }
     .list button.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(223,116,119,.18); }
@@ -685,6 +699,14 @@ APP_HTML = r"""<!doctype html>
         </div>
         <div class="actions"><button class="primary" id="saveSettingsBtn">Save Settings</button></div>
         <div id="settingsStatus" class="status"></div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h2>App Updates</h2>
+        <div class="sub" id="updateDescription"></div>
+        <div class="actions" style="justify-content:flex-start">
+          <button class="success" id="updateBtn">Update From GitHub</button>
+        </div>
+        <div id="updateStatus" class="status"></div>
       </div>
     </section>
   </main>
@@ -947,6 +969,34 @@ APP_HTML = r"""<!doctype html>
       }
     }
 
+    function renderUpdateInfo() {
+      const update = state.meta.update || {};
+      $("updateDescription").textContent = update.message || "";
+      $("updateBtn").disabled = !update.available;
+      setStatus("updateStatus", update.available ? "" : (update.message || ""), "");
+    }
+
+    async function updateApp() {
+      if (!confirm("Download the latest app from GitHub, close this app, and reopen it after updating?")) return;
+      $("updateBtn").disabled = true;
+      setStatus("updateStatus", "Downloading latest version from GitHub...");
+      try {
+        const result = await api("/api/update", { method: "POST", body: "{}" });
+        if (result.alreadyCurrent) {
+          setStatus("updateStatus", result.message || "This app is already up to date.", "ok");
+          $("updateBtn").disabled = false;
+          return;
+        }
+        setStatus("updateStatus", result.message || "Update downloaded. Restarting app.", "ok");
+        setTimeout(() => {
+          document.body.innerHTML = "<main class='shell'><div class='panel'><h1>Updating Spring Flowers Receipts</h1><p class='sub'>The app will reopen automatically after the update installs.</p></div></main>";
+        }, 300);
+      } catch (error) {
+        setStatus("updateStatus", error.message, "error");
+        $("updateBtn").disabled = !(state.meta.update && state.meta.update.available);
+      }
+    }
+
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
     }
@@ -960,6 +1010,7 @@ APP_HTML = r"""<!doctype html>
     $("generateBtn").onclick = () => generateReceipt(false);
     $("refreshHistoryBtn").onclick = loadHistory;
     $("saveSettingsBtn").onclick = saveSettings;
+    $("updateBtn").onclick = updateApp;
     $("openReceiptsBtn").onclick = () => api("/api/open", { method: "POST", body: JSON.stringify({ kind: "receipts" }) });
     $("quitBtn").onclick = async () => {
       await api("/api/shutdown", { method: "POST", body: "{}" });
@@ -977,6 +1028,7 @@ APP_HTML = r"""<!doctype html>
       $("receiptYear").value = state.meta.currentYear;
       $("receiptMonth").innerHTML = state.meta.months.map((name, index) => `<option value="${index + 1}">${name}</option>`).join("");
       $("receiptMonth").value = state.meta.currentMonth;
+      renderUpdateInfo();
       await Promise.all([loadProfiles(), loadSettings(), loadHistory()]);
       addPaymentRow();
     }
