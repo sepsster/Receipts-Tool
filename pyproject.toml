@@ -1,0 +1,13 @@
+[project]
+name = "spring-flowers-receipts"
+version = "0.1.0"
+description = "Portable local receipt generator for Spring Flowers Childcare."
+requires-python = ">=3.11"
+dependencies = [
+  "Pillow",
+  "reportlab",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
