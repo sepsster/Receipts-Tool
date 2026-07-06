@@ -277,7 +277,7 @@ def make_handler(
             if receipt_year < 2020 or receipt_year > 2035:
                 raise ValueError("Receipt year must be between 2020 and 2035.")
 
-            payments = parse_payments(data.get("payments") or [])
+            payments = parse_payments(data.get("payments") or [], receipt_month, receipt_year)
             note = str(data.get("note", "")).strip()
             settings = store.get_settings()
             relative_path = receipt_relative_path(
@@ -425,7 +425,7 @@ def make_handler(
     return ReceiptsToolHandler
 
 
-def parse_payments(raw_payments: list[dict]) -> list[Payment]:
+def parse_payments(raw_payments: list[dict], receipt_month: int, receipt_year: int) -> list[Payment]:
     payments: list[Payment] = []
     for index, row in enumerate(raw_payments, start=1):
         raw_date = str(row.get("date", "")).strip()
@@ -434,9 +434,15 @@ def parse_payments(raw_payments: list[dict]) -> list[Payment]:
         if not (raw_date or raw_amount or raw_marker):
             continue
         try:
+            payment_date = parse_payment_date(raw_date)
+            if payment_date.month != receipt_month or payment_date.year != receipt_year:
+                raise ValueError(
+                    f"Payment date must be in {month_name(receipt_month)} {receipt_year}. "
+                    "Check the selected receipt month/year or the payment date."
+                )
             payments.append(
                 Payment(
-                    payment_date=parse_payment_date(raw_date),
+                    payment_date=payment_date,
                     amount_cents=parse_money_to_cents(raw_amount),
                     marker=raw_marker,
                     row_order=index,

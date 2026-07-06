@@ -14,7 +14,7 @@ from receipts_tool.paths import APP_DIR_ENV, AppPaths, get_paths
 from receipts_tool.pdf_generator import generate_receipt_pdf
 from receipts_tool.storage import ReceiptStore
 from receipts_tool.updater import powershell_executable, write_update_script
-from receipts_tool.web_app import ensure_persistent_logo
+from receipts_tool.web_app import ensure_persistent_logo, parse_payments
 
 
 def main() -> None:
@@ -104,6 +104,15 @@ def main() -> None:
             pass
         else:
             raise AssertionError(f"Bad amount accepted: {bad_amount}")
+
+    parsed_payments = parse_payments([{"date": "04/06/2026", "amount": "100"}], 4, 2026)
+    assert len(parsed_payments) == 1
+    try:
+        parse_payments([{"date": "06/05/2025", "amount": "100"}], 5, 2026)
+    except ValueError as exc:
+        assert "Payment row 1: Payment date must be in May 2026." in str(exc)
+    else:
+        raise AssertionError("Mismatched payment date was accepted.")
 
     render_pdf(pdf_path, ROOT / "tmp" / "pdfs" / "smoke_receipt")
     print(f"Smoke test passed: {pdf_path}")
