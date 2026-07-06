@@ -170,7 +170,7 @@ def prepare_self_update(paths: AppPaths, downloaded_exe: Path | None = None) -> 
             "sourceUrl": update_url,
         }
 
-    script_path = updates_dir / f"apply-update-{stamp}.cmd"
+    script_path = updates_dir / f"apply-update-{stamp}.ps1"
     backup_path = updates_dir / f"{current_exe.stem}-backup-{stamp}.exe"
     log_path = updates_dir / f"update-{stamp}.log"
     write_update_script(script_path)
@@ -259,39 +259,76 @@ def sha256_file(path: Path) -> str:
 
 def write_update_script(path: Path) -> None:
     path.write_text(
-        """@echo off
-setlocal
-set "NEW_EXE=%~1"
-set "TARGET=%~2"
-set "BACKUP=%~3"
-set "LOG=%~4"
-
-echo Starting update at %date% %time% > "%LOG%"
-timeout /t 2 /nobreak >nul
-
-if exist "%TARGET%" (
-  copy /Y "%TARGET%" "%BACKUP%" >> "%LOG%" 2>>&1
+        """param(
+    [Parameter(Mandatory=$true)][string]$NewExe,
+    [Parameter(Mandatory=$true)][string]$Target,
+    [Parameter(Mandatory=$true)][string]$Backup,
+    [Parameter(Mandatory=$true)][string]$Log,
+    [switch]$NoRestart
 )
 
-for /L %%I in (1,1,90) do (
-  copy /Y "%NEW_EXE%" "%TARGET%" >> "%LOG%" 2>>&1
-  if not errorlevel 1 goto updated
-  timeout /t 1 /nobreak >nul
-)
+$ErrorActionPreference = "Stop"
+$logDir = Split-Path -Parent $Log
+if ($logDir) {
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+}
 
-echo Update failed. Restarting the existing app. >> "%LOG%"
-start "" "%TARGET%"
-exit /b 1
+function Write-UpdateLog {
+    param([string]$Message)
+    Add-Content -LiteralPath $Log -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
+}
 
-:updated
-echo Update complete. Restarting app. >> "%LOG%"
-start "" "%TARGET%"
-del "%NEW_EXE%" >nul 2>nul
-exit /b 0
+Write-UpdateLog "Starting update."
+Start-Sleep -Seconds 2
+
+try {
+    if (Test-Path -LiteralPath $Target) {
+        Copy-Item -LiteralPath $Target -Destination $Backup -Force
+        Write-UpdateLog "Backed up existing executable."
+    }
+} catch {
+    Write-UpdateLog "Backup failed: $($_.Exception.Message)"
+}
+
+$updated = $false
+for ($attempt = 1; $attempt -le 90; $attempt++) {
+    try {
+        Copy-Item -LiteralPath $NewExe -Destination $Target -Force
+        $updated = $true
+        Write-UpdateLog "Update copied on attempt $attempt."
+        break
+    } catch {
+        Write-UpdateLog "Attempt $attempt failed: $($_.Exception.Message)"
+        Start-Sleep -Seconds 1
+    }
+}
+
+if (-not $updated) {
+    Write-UpdateLog "Update failed. Restarting existing app."
+    if (-not $NoRestart) {
+        Start-Process -FilePath $Target
+    }
+    exit 1
+}
+
+Write-UpdateLog "Update complete. Restarting app."
+if (-not $NoRestart) {
+    Start-Process -FilePath $Target
+}
+Remove-Item -LiteralPath $NewExe -Force -ErrorAction SilentlyContinue
+exit 0
 """,
         encoding="utf-8",
         newline="\r\n",
     )
+
+
+def powershell_executable() -> str:
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    candidate = Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if candidate.exists():
+        return str(candidate)
+    return "powershell.exe"
 
 
 def launch_update_script(
@@ -300,20 +337,29 @@ def launch_update_script(
     current_exe: Path,
     backup_path: Path,
     log_path: Path,
-) -> None:
-    subprocess.Popen(
-        [
-            "cmd.exe",
-            "/c",
-            "start",
-            "",
-            "/min",
-            str(script_path),
-            str(downloaded_exe),
-            str(current_exe),
-            str(backup_path),
-            str(log_path),
-        ],
-        cwd=str(current_exe.parent),
-        close_fds=True,
-    )
+) -> subprocess.Popen:
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
+    try:
+        return subprocess.Popen(
+            [
+                powershell_executable(),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+                "-NewExe",
+                str(downloaded_exe),
+                "-Target",
+                str(current_exe),
+                "-Backup",
+                str(backup_path),
+                "-Log",
+                str(log_path),
+            ],
+            cwd=str(current_exe.parent),
+            close_fds=True,
+            creationflags=creationflags,
+        )
+    except OSError as exc:
+        raise UpdateError(f"Could not start the updater helper: {exc}") from exc

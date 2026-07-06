@@ -13,11 +13,13 @@ from receipts_tool.models import Payment, Profile, format_money, parse_payment_d
 from receipts_tool.paths import APP_DIR_ENV, AppPaths, get_paths
 from receipts_tool.pdf_generator import generate_receipt_pdf
 from receipts_tool.storage import ReceiptStore
+from receipts_tool.updater import powershell_executable, write_update_script
 from receipts_tool.web_app import ensure_persistent_logo
 
 
 def main() -> None:
     assert_logo_persistence()
+    assert_update_script_can_copy_files()
 
     tmp_root = ROOT / "tmp" / "smoke_portable_app"
     if tmp_root.exists():
@@ -129,6 +131,51 @@ def assert_logo_persistence() -> None:
     logo_path.write_bytes(custom_bytes)
     ensure_persistent_logo(paths)
     assert logo_path.read_bytes() == custom_bytes
+
+
+def assert_update_script_can_copy_files() -> None:
+    tmp_root = ROOT / "tmp" / "update_script_check"
+    if tmp_root.exists():
+        shutil.rmtree(tmp_root)
+    tmp_root.mkdir(parents=True)
+
+    script_path = tmp_root / "apply-update.ps1"
+    new_exe = tmp_root / "new.exe"
+    target = tmp_root / "target.exe"
+    backup = tmp_root / "backup.exe"
+    log_path = tmp_root / "update.log"
+
+    new_exe.write_bytes(b"new executable")
+    target.write_bytes(b"old executable")
+    write_update_script(script_path)
+
+    subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+            "-NewExe",
+            str(new_exe),
+            "-Target",
+            str(target),
+            "-Backup",
+            str(backup),
+            "-Log",
+            str(log_path),
+            "-NoRestart",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert target.read_bytes() == b"new executable"
+    assert backup.read_bytes() == b"old executable"
+    assert not new_exe.exists()
+    assert "Update complete" in log_path.read_text(encoding="utf-8")
 
 
 def render_pdf(pdf_path: Path, output_prefix: Path) -> None:
