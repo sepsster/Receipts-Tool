@@ -221,7 +221,7 @@ def _draw_info_block(
     pdf.setFillColor(TEXT)
     current_y = y - 22
     for index, line in enumerate([line for line in lines if line.strip()]):
-        pdf.setFont(font_bold if current_y == y - 22 else font_regular, 10)
+        pdf.setFont(font_regular, 10)
         wrapped = _wrap_line(pdf, line, font_regular, 10, width)
         for part in wrapped[:2]:
             indent = 8 if index in (2, 3) else 0
