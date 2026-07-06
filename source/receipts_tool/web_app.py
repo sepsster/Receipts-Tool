@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import mimetypes
 import os
@@ -13,8 +15,11 @@ import webbrowser
 from datetime import date
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+
+from PIL import Image, UnidentifiedImageError
 
 from .models import (
     MONTH_NAMES,
@@ -30,6 +35,10 @@ from .paths import AppPaths, get_paths
 from .pdf_generator import MAX_PAYMENT_ROWS, generate_receipt_pdf
 from .storage import ReceiptStore
 from .updater import UpdateCheckState, UpdateError, prepare_self_update
+
+
+MAX_LOGO_UPLOAD_BYTES = 8 * 1024 * 1024
+MAX_LOGO_DIMENSION = 1600
 
 
 def main() -> None:
@@ -179,6 +188,9 @@ def make_handler(
             if parsed.path == "/api/update-status":
                 self._send_json(update_checker.snapshot() if update_checker else {})
                 return
+            if parsed.path == "/logo":
+                self._serve_logo_file()
+                return
             if parsed.path == "/receipt-pdf":
                 self._serve_receipt_file(parsed.query)
                 return
@@ -192,6 +204,9 @@ def make_handler(
                     return
                 if parsed.path == "/api/settings":
                     self._save_settings()
+                    return
+                if parsed.path == "/api/logo":
+                    self._save_logo()
                     return
                 if parsed.path == "/api/generate":
                     self._generate_receipt()
@@ -291,7 +306,7 @@ def make_handler(
                 receipt_year=receipt_year,
                 payments=payments,
                 note=note,
-                logo_path=paths.logo_path,
+                logo_path=current_logo_path(paths),
             )
             store.save_receipt(profile_id, receipt_month, receipt_year, relative_path, note, payments)
             open_path(output_path)
@@ -338,6 +353,25 @@ def make_handler(
             self._send_json({"ok": True, **result})
             if result.get("restartRequired"):
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+        def _save_logo(self) -> None:
+            data = self._read_json()
+            logo_path = save_logo_upload(paths, str(data.get("image", "")))
+            self._send_json({"ok": True, "logoPath": str(logo_path), "logoUrl": f"/logo?ts={int(time.time())}"})
+
+        def _serve_logo_file(self) -> None:
+            target = current_logo_path(paths)
+            if not target.exists():
+                self._send_error(HTTPStatus.NOT_FOUND, "Logo image not found.")
+                return
+            data = target.read_bytes()
+            content_type = mimetypes.guess_type(target.name)[0] or "image/png"
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
 
         def _serve_receipt_file(self, query: str) -> None:
             params = parse_qs(query)
@@ -413,6 +447,48 @@ def parse_payments(raw_payments: list[dict]) -> list[Payment]:
     if len(payments) > MAX_PAYMENT_ROWS:
         raise ValueError(f"Receipts can include at most {MAX_PAYMENT_ROWS} payment rows.")
     return payments
+
+
+def current_logo_path(paths: AppPaths) -> Path:
+    custom_logo = paths.assets_dir / "logo.png"
+    if custom_logo.exists():
+        return custom_logo
+    return paths.logo_path
+
+
+def save_logo_upload(paths: AppPaths, data_url: str) -> Path:
+    if not data_url.startswith("data:image/"):
+        raise ValueError("Choose a PNG, JPG, or other standard image file.")
+    try:
+        _header, encoded = data_url.split(",", 1)
+    except ValueError as exc:
+        raise ValueError("The logo upload was not a valid image.") from exc
+
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("The logo upload could not be decoded.") from exc
+
+    if not raw:
+        raise ValueError("Choose a logo image first.")
+    if len(raw) > MAX_LOGO_UPLOAD_BYTES:
+        raise ValueError("Logo images must be smaller than 8 MB.")
+
+    try:
+        with Image.open(BytesIO(raw)) as check:
+            check.verify()
+        with Image.open(BytesIO(raw)) as image:
+            if image.width < 1 or image.height < 1:
+                raise ValueError("The logo image is empty.")
+            image.thumbnail((MAX_LOGO_DIMENSION, MAX_LOGO_DIMENSION), Image.LANCZOS)
+            if image.mode not in ("RGB", "RGBA"):
+                image = image.convert("RGBA")
+            paths.assets_dir.mkdir(parents=True, exist_ok=True)
+            logo_path = paths.assets_dir / "logo.png"
+            image.save(logo_path, format="PNG")
+            return logo_path
+    except UnidentifiedImageError as exc:
+        raise ValueError("The selected file was not a readable image.") from exc
 
 
 def profile_to_json(profile: Profile | None) -> dict:
@@ -591,6 +667,16 @@ APP_HTML = r"""<!doctype html>
     .status.error { color: #b42318; }
     .status.ok { color: var(--green); }
     .footer-actions { display: flex; gap: 10px; justify-content: space-between; align-items: center; }
+    .logo-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .logo-preview {
+      width: 120px;
+      height: 120px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      object-fit: contain;
+      background: #fff;
+      padding: 8px;
+    }
     .tab-dot {
       display: inline-block;
       width: 8px;
@@ -747,6 +833,18 @@ APP_HTML = r"""<!doctype html>
         </div>
         <div class="actions"><button class="primary" id="saveSettingsBtn">Save Settings</button></div>
         <div id="settingsStatus" class="status"></div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h2>Receipt Logo</h2>
+        <div class="logo-row">
+          <img class="logo-preview" id="logoPreview" src="/logo" alt="">
+          <div style="flex:1; min-width:240px">
+            <label>Logo image</label>
+            <input id="logoFile" type="file" accept="image/*">
+          </div>
+        </div>
+        <div class="actions"><button class="primary" id="saveLogoBtn">Save Logo</button></div>
+        <div id="logoStatus" class="status"></div>
       </div>
       <div class="panel" style="margin-top:16px">
         <h2>App Updates <span class="update-badge" id="updateBadge" hidden>Update available</span></h2>
@@ -1026,6 +1124,40 @@ APP_HTML = r"""<!doctype html>
       }
     }
 
+    function refreshLogoPreview() {
+      $("logoPreview").src = `/logo?ts=${Date.now()}`;
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Could not read the selected logo file."));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function saveLogo() {
+      try {
+        const file = $("logoFile").files[0];
+        if (!file) {
+          setStatus("logoStatus", "Choose a logo image first.", "error");
+          return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+          setStatus("logoStatus", "Logo images must be smaller than 8 MB.", "error");
+          return;
+        }
+        const image = await readFileAsDataUrl(file);
+        await api("/api/logo", { method: "POST", body: JSON.stringify({ image }) });
+        $("logoFile").value = "";
+        refreshLogoPreview();
+        setStatus("logoStatus", "Logo saved. New receipts will use this image.", "ok");
+      } catch (error) {
+        setStatus("logoStatus", error.message, "error");
+      }
+    }
+
     function renderUpdateInfo() {
       const update = state.meta.update || {};
       const isAvailable = !!update.updateAvailable;
@@ -1090,6 +1222,11 @@ APP_HTML = r"""<!doctype html>
     $("generateBtn").onclick = () => generateReceipt(false);
     $("refreshHistoryBtn").onclick = loadHistory;
     $("saveSettingsBtn").onclick = saveSettings;
+    $("saveLogoBtn").onclick = saveLogo;
+    $("logoFile").onchange = () => {
+      const file = $("logoFile").files[0];
+      if (file) $("logoPreview").src = URL.createObjectURL(file);
+    };
     $("updateBtn").onclick = updateApp;
     $("toastDismissBtn").onclick = () => $("updateToast").hidden = true;
     $("toastSettingsBtn").onclick = () => {

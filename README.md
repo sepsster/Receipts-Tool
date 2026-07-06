@@ -8,6 +8,8 @@ The app checks GitHub for updates each time it opens. If a newer version is avai
 
 Generated receipt PDFs are protected from normal PDF editing.
 
+Use `Settings` to save business defaults and upload a custom receipt logo.
+
 When you use the app, it saves its working files beside the executable:
 
 - `data/receipts.sqlite`
