@@ -20,6 +20,8 @@ The app creates these folders beside the source tree during development, or besi
 - `backups/receipts-{timestamp}.sqlite`
 - `assets/logo.png`
 
+Generated receipt PDFs use PDF owner-password permissions so they open normally but standard PDF editors cannot change or annotate them.
+
 ## Build The Portable App
 
 Install PyInstaller into a local virtual environment, then run this from the repository root:

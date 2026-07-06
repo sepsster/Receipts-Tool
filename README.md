@@ -6,6 +6,8 @@ The app runs locally on this computer. Nothing is uploaded anywhere.
 
 To update later, open the app and use `Settings` -> `Update From GitHub`.
 
+Generated receipt PDFs are protected from normal PDF editing.
+
 When you use the app, it saves its working files beside the executable:
 
 - `data/receipts.sqlite`

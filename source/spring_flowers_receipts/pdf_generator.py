@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import secrets
 import textwrap
 from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
+from reportlab.lib.pdfencrypt import StandardEncryption
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfbase.ttfonts import TTFont
@@ -20,6 +22,7 @@ LIGHT_ROW = colors.HexColor("#f2f2f2")
 GRID = colors.HexColor("#bfbfbf")
 TEXT = colors.HexColor("#111111")
 DARK_TOTAL = colors.HexColor("#364152")
+PDF_ENCRYPTION_STRENGTH = 128
 
 
 def _register_fonts() -> tuple[str, str]:
@@ -61,7 +64,7 @@ def generate_receipt_pdf(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     font_regular, font_bold = _register_fonts()
-    pdf = canvas.Canvas(str(output_path), pagesize=letter)
+    pdf = canvas.Canvas(str(output_path), pagesize=letter, encrypt=_protected_pdf_encryption())
     pdf.setTitle(
         f"{profile.child_name} - Payment Receipt - {month_name(receipt_month)} {receipt_year}"
     )
@@ -79,6 +82,18 @@ def generate_receipt_pdf(
         font_bold=font_bold,
     )
     pdf.save()
+
+
+def _protected_pdf_encryption() -> StandardEncryption:
+    return StandardEncryption(
+        userPassword="",
+        ownerPassword=secrets.token_urlsafe(32),
+        canPrint=1,
+        canModify=0,
+        canCopy=1,
+        canAnnotate=0,
+        strength=PDF_ENCRYPTION_STRENGTH,
+    )
 
 
 def _draw_receipt(
@@ -133,7 +148,7 @@ def _draw_receipt(
         x=left_x,
         y=475,
         width=154.3,
-        heading="Parent Inforamtion",
+        heading="Parent Information",
         lines=[
             profile.parent1_name,
             profile.parent2_name,

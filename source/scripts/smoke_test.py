@@ -64,6 +64,7 @@ def main() -> None:
         logo_path=paths.logo_path,
     )
     assert pdf_path.exists() and pdf_path.stat().st_size > 10_000
+    assert_pdf_edit_protected(pdf_path)
     store.save_receipt(profile_id, 4, 2026, Path("receipts") / "2026" / "Adaure - smoke.pdf", note, payments)
     assert store.receipt_exists(profile_id, 4, 2026)
     assert len(store.receipt_history()) == 1
@@ -119,6 +120,30 @@ def render_pdf(pdf_path: Path, output_prefix: Path) -> None:
         print("Poppler render skipped; pdftoppm.exe not found.")
         return
     subprocess.run([str(poppler), "-png", str(pdf_path), str(output_prefix)], check=True)
+
+
+def assert_pdf_edit_protected(pdf_path: Path) -> None:
+    pdfinfo = (
+        Path.home()
+        / ".cache"
+        / "codex-runtimes"
+        / "codex-primary-runtime"
+        / "dependencies"
+        / "native"
+        / "poppler"
+        / "Library"
+        / "bin"
+        / "pdfinfo.exe"
+    )
+    if not pdfinfo.exists():
+        print("PDF permission check skipped; pdfinfo.exe not found.")
+        return
+
+    result = subprocess.run([str(pdfinfo), str(pdf_path)], check=True, capture_output=True, text=True)
+    info = result.stdout
+    assert "Encrypted:       yes" in info
+    assert "change:no" in info
+    assert "addNotes:no" in info
 
 
 if __name__ == "__main__":
