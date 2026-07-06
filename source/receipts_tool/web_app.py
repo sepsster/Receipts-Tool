@@ -996,6 +996,30 @@ APP_HTML = r"""<!doctype html>
       renderPaymentRows();
     }
 
+    function formatPaymentDateInput(value) {
+      const raw = String(value || "");
+      if (raw.includes("/")) {
+        const parts = raw.split("/");
+        const month = (parts[0] || "").replace(/\D/g, "").slice(0, 2);
+        let dayDigits = (parts[1] || "").replace(/\D/g, "");
+        let yearDigits = parts.length > 2 ? parts.slice(2).join("").replace(/\D/g, "") : "";
+        if (parts.length === 2 && dayDigits.length > 2) {
+          yearDigits = dayDigits.slice(2);
+          dayDigits = dayDigits.slice(0, 2);
+        }
+        const day = dayDigits.slice(0, 2);
+        const year = yearDigits.slice(0, 4);
+        if (parts.length > 2 || year) return `${month}/${day}/${year}`;
+        if (parts.length > 1) return `${month}/${day}`;
+        return month;
+      }
+
+      const digits = raw.replace(/\D/g, "").slice(0, 8);
+      if (digits.length <= 2) return digits;
+      if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    }
+
     function renderPaymentRows() {
       const root = $("paymentRows");
       root.innerHTML = "";
@@ -1005,7 +1029,7 @@ APP_HTML = r"""<!doctype html>
         wrap.innerHTML = `
           <div>${index + 1}</div>
           <input type="checkbox" data-field="marker" data-index="${index}" ${row.marker ? "checked" : ""} title="Print an asterisk for the optional note">
-          <input data-field="date" data-index="${index}" value="${escapeAttr(row.date)}" placeholder="mm/dd/yyyy">
+          <input data-field="date" data-index="${index}" value="${escapeAttr(row.date)}" placeholder="mm/dd/yyyy" inputmode="numeric" maxlength="10">
           <input data-field="amount" data-index="${index}" value="${escapeAttr(row.amount)}" placeholder="100.00">
           <button data-remove="${index}">Remove</button>
         `;
@@ -1014,6 +1038,9 @@ APP_HTML = r"""<!doctype html>
       root.querySelectorAll("input").forEach(input => {
         const syncInput = event => {
           const target = event.target;
+          if (target.dataset.field === "date") {
+            target.value = formatPaymentDateInput(target.value);
+          }
           state.paymentRows[Number(target.dataset.index)][target.dataset.field] = target.type === "checkbox"
             ? (target.checked ? "*" : "")
             : target.value;
@@ -1045,9 +1072,11 @@ APP_HTML = r"""<!doctype html>
         const marker = row.querySelector('input[data-field="marker"]');
         const date = row.querySelector('input[data-field="date"]');
         const amount = row.querySelector('input[data-field="amount"]');
+        const formattedDate = date ? formatPaymentDateInput(date.value) : "";
+        if (date) date.value = formattedDate;
         const data = {
           marker: marker && marker.checked ? "*" : "",
-          date: date ? date.value : "",
+          date: formattedDate,
           amount: amount ? amount.value : ""
         };
         state.paymentRows[index] = data;
