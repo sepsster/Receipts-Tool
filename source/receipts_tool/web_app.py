@@ -753,7 +753,13 @@ APP_HTML = r"""<!doctype html>
           <input type="hidden" id="profileId">
           <div class="row">
             <div><label>Child name</label><input id="childName" autocomplete="off"></div>
-            <div><label>Status</label><input id="status" value="Full-Time"></div>
+            <div>
+              <label>Status</label>
+              <select id="status">
+                <option value="Full-Time">Full-Time</option>
+                <option value="Part-Time">Part-Time</option>
+              </select>
+            </div>
           </div>
           <div class="row">
             <div><label>Parent/guardian 1</label><input id="parent1"></div>
@@ -896,6 +902,10 @@ APP_HTML = r"""<!doctype html>
       document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === name));
     }
 
+    function normalizeStatus(value) {
+      return value === "Part-Time" ? "Part-Time" : "Full-Time";
+    }
+
     function blankProfile() {
       $("profileId").value = "";
       $("childName").value = "";
@@ -914,7 +924,7 @@ APP_HTML = r"""<!doctype html>
     function loadProfile(profile) {
       $("profileId").value = profile.id || "";
       $("childName").value = profile.child_name || "";
-      $("status").value = profile.status || "";
+      $("status").value = normalizeStatus(profile.status);
       $("parent1").value = profile.parent1_name || "";
       $("parent2").value = profile.parent2_name || "";
       $("address1").value = profile.address_line1 || "";
