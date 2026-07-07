@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -40,6 +41,7 @@ class UpdateCheckState:
         self.paths = paths
         self._lock = threading.Lock()
         self._downloaded_path: Path | None = None
+        self._last_progress_pct: int | None = None
         self._status = _base_update_status()
 
     def start(self) -> None:
@@ -114,12 +116,35 @@ class UpdateCheckState:
             stamp = time.strftime("%Y%m%d-%H%M%S")
             suffix = "zip" if package_type == "zip" else "exe"
             downloaded_path = updates_dir / f"checked-{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.{suffix}"
+
+            self._last_progress_pct = None
+
+            def on_progress(downloaded: int, total: int | None) -> None:
+                pct: int | None = None
+                if total and total > 0:
+                    pct = max(0, min(100, int(downloaded * 100 / total)))
+                if pct is not None and pct == self._last_progress_pct:
+                    return
+                self._last_progress_pct = pct
+                self._set_status(
+                    state="downloading",
+                    message=(f"Downloading update... {pct}%" if pct is not None else "Downloading update..."),
+                    update_available=False,
+                    checking=True,
+                    latest_version=latest_version,
+                    source_url=update_url,
+                    download_percent=pct,
+                    downloaded_bytes=downloaded,
+                    total_bytes=total,
+                )
+
             download_executable(
                 update_url,
                 downloaded_path,
                 expected_sha256=manifest.get("sha256"),
                 expected_size=manifest.get("size"),
                 expected_kind=package_type,
+                progress_cb=on_progress,
             )
 
             # For a single-exe package we can short-circuit if the bytes already
@@ -175,6 +200,9 @@ class UpdateCheckState:
         checking: bool,
         latest_version: str | None = None,
         source_url: str | None = None,
+        download_percent: int | None = None,
+        downloaded_bytes: int | None = None,
+        total_bytes: int | None = None,
     ) -> None:
         status = _base_update_status()
         status.update(
@@ -184,6 +212,9 @@ class UpdateCheckState:
                 "updateAvailable": update_available,
                 "checking": checking,
                 "checkedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "downloadPercent": download_percent,
+                "downloadedBytes": downloaded_bytes,
+                "totalBytes": total_bytes,
             }
         )
         if latest_version is not None:
@@ -371,6 +402,9 @@ def _base_update_status() -> dict[str, object]:
         "latestVersion": "",
         "message": "",
         "checkedAt": "",
+        "downloadPercent": None,
+        "downloadedBytes": None,
+        "totalBytes": None,
     }
 
 
@@ -471,6 +505,7 @@ def download_executable(
     expected_sha256: str | None = None,
     expected_size: int | None = None,
     expected_kind: str = "exe",
+    progress_cb: Callable[[int, int | None], None] | None = None,
 ) -> None:
     request = urllib.request.Request(
         cache_busted_url(update_url),
@@ -478,8 +513,27 @@ def download_executable(
     )
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
+            total: int | None = expected_size
+            raw_length = response.headers.get("Content-Length")
+            if raw_length is not None:
+                try:
+                    parsed_length = int(raw_length)
+                except (TypeError, ValueError):
+                    parsed_length = 0
+                if parsed_length > 0:
+                    total = parsed_length
+            downloaded = 0
+            if progress_cb:
+                progress_cb(0, total)
             with output_path.open("wb") as destination:
-                shutil.copyfileobj(response, destination)
+                while True:
+                    chunk = response.read(131072)
+                    if not chunk:
+                        break
+                    destination.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_cb:
+                        progress_cb(downloaded, total)
     except urllib.error.HTTPError as exc:
         output_path.unlink(missing_ok=True)
         if exc.code in {401, 403, 404}:

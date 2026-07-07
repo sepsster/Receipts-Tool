@@ -744,6 +744,34 @@ APP_HTML = r"""<!doctype html>
       color: #6c4d08;
       background: #fff8e8;
     }
+    .update-progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 10px 0 2px;
+      max-width: 640px;
+    }
+    .update-progress progress {
+      flex: 1;
+      height: 14px;
+    }
+    .update-progress-label {
+      font-size: 13px;
+      color: var(--muted);
+      min-width: 44px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid var(--line);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 18px 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .version-list {
       display: grid;
       gap: 0;
@@ -946,6 +974,10 @@ APP_HTML = r"""<!doctype html>
           </div>
         </div>
         <div class="sub" id="updateDescription"></div>
+        <div class="update-progress" id="updateProgressWrap" hidden>
+          <progress id="updateProgress" max="100" value="0"></progress>
+          <span class="update-progress-label" id="updateProgressLabel">0%</span>
+        </div>
         <div class="actions" style="justify-content:flex-start">
           <button id="checkUpdateBtn">Check for Updates</button>
           <button class="success" id="updateBtn">Install Update</button>
@@ -1336,6 +1368,14 @@ APP_HTML = r"""<!doctype html>
       $("updateDescription").textContent = update.message || "";
       $("checkUpdateBtn").disabled = !update.supported || !!update.checking;
       $("updateBtn").disabled = !update.supported || !!update.checking;
+      const downloading = update.state === "downloading";
+      const pct = (typeof update.downloadPercent === "number") ? update.downloadPercent : null;
+      $("updateProgressWrap").hidden = !downloading;
+      if (downloading) {
+        const bar = $("updateProgress");
+        if (pct === null) { bar.removeAttribute("value"); } else { bar.value = pct; }
+        $("updateProgressLabel").textContent = (pct === null) ? "…" : `${pct}%`;
+      }
       setStatus("updateStatus", update.message || "", isAvailable ? "ok" : (update.state === "error" ? "error" : ""));
       if (isAvailable && !state.updateNotified) {
         showUpdateToast();
@@ -1347,6 +1387,8 @@ APP_HTML = r"""<!doctype html>
       switch (update.state) {
         case "available":
           return "Update available";
+        case "downloading":
+          return "Downloading";
         case "checking":
           return "Checking";
         case "current":
@@ -1369,7 +1411,7 @@ APP_HTML = r"""<!doctype html>
         state.meta.update = await api("/api/update-status");
         renderUpdateInfo();
         if (state.meta.update.checking) {
-          setTimeout(refreshUpdateStatus, 2000);
+          setTimeout(refreshUpdateStatus, state.meta.update.state === "downloading" ? 500 : 2000);
         }
       } catch (error) {
         setStatus("updateStatus", error.message, "error");
@@ -1384,7 +1426,7 @@ APP_HTML = r"""<!doctype html>
         state.meta.update = await api("/api/check-update", { method: "POST", body: "{}" });
         renderUpdateInfo();
         if (state.meta.update.checking) {
-          setTimeout(refreshUpdateStatus, 2000);
+          setTimeout(refreshUpdateStatus, state.meta.update.state === "downloading" ? 500 : 2000);
         }
       } catch (error) {
         setStatus("updateStatus", error.message, "error");
@@ -1395,7 +1437,7 @@ APP_HTML = r"""<!doctype html>
     async function updateApp() {
       if (!confirm("Download the latest app from GitHub, close this app, and reopen it after updating?")) return;
       $("updateBtn").disabled = true;
-      setStatus("updateStatus", "Downloading latest version from GitHub...");
+      setStatus("updateStatus", "Preparing update...");
       try {
         const result = await api("/api/update", { method: "POST", body: "{}" });
         if (result.alreadyCurrent) {
@@ -1405,7 +1447,7 @@ APP_HTML = r"""<!doctype html>
         }
         setStatus("updateStatus", result.message || "Update downloaded. Restarting app.", "ok");
         setTimeout(() => {
-          document.body.innerHTML = "<main class='shell'><div class='panel'><h1>Updating Receipts Tool</h1><p class='sub'>The app will reopen automatically after the update installs.</p></div></main>";
+          document.body.innerHTML = "<main class='shell'><div class='panel'><h1>Installing update…</h1><div class='spinner'></div><p class='sub'>The app will close, install the update, and reopen automatically. This usually takes about 10–20 seconds.</p></div></main>";
         }, 300);
       } catch (error) {
         setStatus("updateStatus", error.message, "error");
