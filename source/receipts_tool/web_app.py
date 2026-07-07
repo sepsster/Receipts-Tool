@@ -948,7 +948,7 @@ APP_HTML = r"""<!doctype html>
         <div class="sub" id="updateDescription"></div>
         <div class="actions" style="justify-content:flex-start">
           <button id="checkUpdateBtn">Check for Updates</button>
-          <button class="success" id="updateBtn">Update From GitHub</button>
+          <button class="success" id="updateBtn">Install Update</button>
         </div>
         <div id="updateStatus" class="status"></div>
       </div>

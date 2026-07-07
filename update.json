@@ -1,8 +1,8 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "packageType": "zip",
   "entryExe": "Payment Receipt Generator Tool.exe",
-  "downloadUrl": "https://raw.githubusercontent.com/sepsster/Receipts-Tool/master/Payment%20Receipt%20Generator%20Tool.zip?v=0.3.0",
-  "sha256": "5a6128693255f34b2cd1fa0e9cc87ccabf04fbecb1c6bc334b9c9f6e7c3e4d39",
-  "size": 18054173
+  "downloadUrl": "https://raw.githubusercontent.com/sepsster/Receipts-Tool/master/Payment%20Receipt%20Generator%20Tool.zip?v=0.3.1",
+  "sha256": "3587678e18236709a897415db1503871e4035023ffe163ab2850114095347675",
+  "size": 18054542
 }
