@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -10,16 +11,20 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
+from . import __version__
 from .paths import AppPaths
 
 
 APP_EXE_NAME = "Payment Receipt Generator Tool.exe"
 UPDATE_URL_ENV = "RECEIPTS_TOOL_UPDATE_URL"
+UPDATE_MANIFEST_URL_ENV = "RECEIPTS_TOOL_UPDATE_MANIFEST_URL"
 DEFAULT_UPDATE_URL = (
     "https://raw.githubusercontent.com/sepsster/"
     "Receipts-Tool/master/Payment%20Receipt%20Generator%20Tool.exe"
 )
+DEFAULT_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/sepsster/Receipts-Tool/master/update.json"
 MIN_EXE_BYTES = 1_000_000
 
 
@@ -86,19 +91,40 @@ class UpdateCheckState:
         downloaded_exe: Path | None = None
         try:
             current_exe = current_executable()
+            manifest = download_update_manifest()
+            latest_version = manifest["version"]
+            update_url = manifest["download_url"]
+            if not is_newer_version(latest_version, __version__):
+                self._set_status(
+                    state="current",
+                    message=f"This app is up to date at v{__version__}.",
+                    update_available=False,
+                    checking=False,
+                    latest_version=latest_version,
+                    source_url=update_url,
+                )
+                return
+
             updates_dir = self.paths.app_dir / "tmp" / "updates"
             updates_dir.mkdir(parents=True, exist_ok=True)
             stamp = time.strftime("%Y%m%d-%H%M%S")
             downloaded_exe = updates_dir / f"checked-{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.exe"
-            download_executable(get_update_url(), downloaded_exe)
+            download_executable(
+                update_url,
+                downloaded_exe,
+                expected_sha256=manifest.get("sha256"),
+                expected_size=manifest.get("size"),
+            )
 
             if sha256_file(downloaded_exe) == sha256_file(current_exe):
                 downloaded_exe.unlink(missing_ok=True)
                 self._set_status(
                     state="current",
-                    message="This app is up to date.",
+                    message=f"This app is up to date at v{__version__}.",
                     update_available=False,
                     checking=False,
+                    latest_version=latest_version,
+                    source_url=update_url,
                 )
                 return
 
@@ -106,9 +132,11 @@ class UpdateCheckState:
                 self._downloaded_path = downloaded_exe
             self._set_status(
                 state="available",
-                message="A newer version is available on GitHub.",
+                message=f"Version {latest_version} is available on GitHub.",
                 update_available=True,
                 checking=False,
+                latest_version=latest_version,
+                source_url=update_url,
             )
         except UpdateError as exc:
             if downloaded_exe:
@@ -136,6 +164,8 @@ class UpdateCheckState:
         message: str,
         update_available: bool,
         checking: bool,
+        latest_version: str | None = None,
+        source_url: str | None = None,
     ) -> None:
         status = _base_update_status()
         status.update(
@@ -147,6 +177,10 @@ class UpdateCheckState:
                 "checkedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
         )
+        if latest_version is not None:
+            status["latestVersion"] = latest_version
+        if source_url is not None:
+            status["sourceUrl"] = source_url
         with self._lock:
             self._status = status
 
@@ -168,24 +202,45 @@ def get_update_info() -> dict[str, object]:
 
 def prepare_self_update(paths: AppPaths, downloaded_exe: Path | None = None) -> dict[str, object]:
     current_exe = current_executable()
-    update_url = get_update_url()
+    manifest = download_update_manifest()
+    update_url = manifest["download_url"]
+    latest_version = manifest["version"]
     updates_dir = paths.app_dir / "tmp" / "updates"
     updates_dir.mkdir(parents=True, exist_ok=True)
+
+    if downloaded_exe is None and not is_newer_version(latest_version, __version__):
+        return {
+            "alreadyCurrent": True,
+            "restartRequired": False,
+            "message": f"This app is already up to date at v{__version__}.",
+            "sourceUrl": update_url,
+            "latestVersion": latest_version,
+        }
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
     if downloaded_exe is None or not downloaded_exe.exists():
         downloaded_exe = updates_dir / f"{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.exe"
-        download_executable(update_url, downloaded_exe)
+        download_executable(
+            update_url,
+            downloaded_exe,
+            expected_sha256=manifest.get("sha256"),
+            expected_size=manifest.get("size"),
+        )
     else:
-        validate_downloaded_exe(downloaded_exe)
+        validate_downloaded_exe(
+            downloaded_exe,
+            expected_sha256=manifest.get("sha256"),
+            expected_size=manifest.get("size"),
+        )
 
     if sha256_file(downloaded_exe) == sha256_file(current_exe):
         downloaded_exe.unlink(missing_ok=True)
         return {
             "alreadyCurrent": True,
             "restartRequired": False,
-            "message": "This app is already up to date.",
+            "message": f"This app is already up to date at v{__version__}.",
             "sourceUrl": update_url,
+            "latestVersion": latest_version,
         }
 
     script_path = updates_dir / f"apply-update-{stamp}.ps1"
@@ -196,14 +251,19 @@ def prepare_self_update(paths: AppPaths, downloaded_exe: Path | None = None) -> 
     return {
         "alreadyCurrent": False,
         "restartRequired": True,
-        "message": "Update downloaded. The app will close, install the update, and reopen.",
+        "message": f"Version {latest_version} downloaded. The app will close, install the update, and reopen.",
         "sourceUrl": update_url,
+        "latestVersion": latest_version,
         "logPath": str(log_path),
     }
 
 
 def get_update_url() -> str:
     return os.environ.get(UPDATE_URL_ENV, DEFAULT_UPDATE_URL).strip() or DEFAULT_UPDATE_URL
+
+
+def get_update_manifest_url() -> str:
+    return os.environ.get(UPDATE_MANIFEST_URL_ENV, DEFAULT_UPDATE_MANIFEST_URL).strip() or DEFAULT_UPDATE_MANIFEST_URL
 
 
 def _base_update_status() -> dict[str, object]:
@@ -215,6 +275,9 @@ def _base_update_status() -> dict[str, object]:
         "checking": False,
         "state": "idle" if supported else "unavailable",
         "sourceUrl": get_update_url(),
+        "manifestUrl": get_update_manifest_url(),
+        "installedVersion": __version__,
+        "latestVersion": "",
         "message": "",
         "checkedAt": "",
     }
@@ -231,10 +294,89 @@ def current_executable() -> Path:
     return exe_path
 
 
-def download_executable(update_url: str, output_path: Path) -> None:
+def download_update_manifest() -> dict[str, object]:
     request = urllib.request.Request(
-        update_url,
-        headers={"User-Agent": "ReceiptsToolUpdater/1.0"},
+        cache_busted_url(get_update_manifest_url()),
+        headers={"User-Agent": "ReceiptsToolUpdater/1.0", "Cache-Control": "no-cache"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw_manifest = json.loads(response.read(256 * 1024).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403, 404}:
+            raise UpdateError(
+                "GitHub would not allow the update manifest download. Make the repo public, then try again."
+            ) from exc
+        raise UpdateError(f"GitHub returned HTTP {exc.code} while checking the latest version.") from exc
+    except urllib.error.URLError as exc:
+        raise UpdateError(f"Could not reach GitHub: {exc.reason}") from exc
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise UpdateError(f"Could not read the update manifest: {exc}") from exc
+
+    if not isinstance(raw_manifest, dict):
+        raise UpdateError("The update manifest was not valid.")
+
+    version = str(raw_manifest.get("version", "")).strip()
+    download_url = str(raw_manifest.get("downloadUrl", "")).strip() or get_update_url()
+    sha256 = str(raw_manifest.get("sha256", "")).strip().lower()
+    size = raw_manifest.get("size")
+    if not version:
+        raise UpdateError("The update manifest did not include a version.")
+    if not download_url:
+        raise UpdateError("The update manifest did not include a download URL.")
+    if size is not None:
+        try:
+            size = int(size)
+        except (TypeError, ValueError) as exc:
+            raise UpdateError("The update manifest had an invalid file size.") from exc
+
+    return {
+        "version": version,
+        "download_url": download_url,
+        "sha256": sha256 or None,
+        "size": size,
+    }
+
+
+def is_newer_version(candidate: str, current: str) -> bool:
+    candidate_parts = version_parts(candidate)
+    current_parts = version_parts(current)
+    length = max(len(candidate_parts), len(current_parts))
+    candidate_parts += (0,) * (length - len(candidate_parts))
+    current_parts += (0,) * (length - len(current_parts))
+    return candidate_parts > current_parts
+
+
+def version_parts(version: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for part in version.strip().split("."):
+        digits = ""
+        for character in part:
+            if not character.isdigit():
+                break
+            digits += character
+        parts.append(int(digits or "0"))
+    return tuple(parts or [0])
+
+
+def cache_busted_url(url: str) -> str:
+    split = urlsplit(url)
+    query = split.query
+    separator = "&" if query else ""
+    query = f"{query}{separator}{urlencode({'_': str(int(time.time()))})}"
+    return urlunsplit((split.scheme, split.netloc, split.path, query, split.fragment))
+
+
+def download_executable(
+    update_url: str,
+    output_path: Path,
+    *,
+    expected_sha256: str | None = None,
+    expected_size: int | None = None,
+) -> None:
+    request = urllib.request.Request(
+        cache_busted_url(update_url),
+        headers={"User-Agent": "ReceiptsToolUpdater/1.0", "Cache-Control": "no-cache"},
     )
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
@@ -254,17 +396,29 @@ def download_executable(update_url: str, output_path: Path) -> None:
         output_path.unlink(missing_ok=True)
         raise UpdateError(f"Could not save the downloaded update: {exc}") from exc
 
-    validate_downloaded_exe(output_path)
+    validate_downloaded_exe(output_path, expected_sha256=expected_sha256, expected_size=expected_size)
 
 
-def validate_downloaded_exe(path: Path) -> None:
-    if path.stat().st_size < MIN_EXE_BYTES:
+def validate_downloaded_exe(
+    path: Path,
+    *,
+    expected_sha256: str | None = None,
+    expected_size: int | None = None,
+) -> None:
+    actual_size = path.stat().st_size
+    if actual_size < MIN_EXE_BYTES:
         path.unlink(missing_ok=True)
         raise UpdateError("The downloaded update looked incomplete.")
+    if expected_size is not None and actual_size != expected_size:
+        path.unlink(missing_ok=True)
+        raise UpdateError("The downloaded update size did not match the latest version manifest.")
     with path.open("rb") as file:
         if file.read(2) != b"MZ":
             path.unlink(missing_ok=True)
             raise UpdateError("The downloaded update was not a Windows executable.")
+    if expected_sha256 and sha256_file(path).lower() != expected_sha256.lower():
+        path.unlink(missing_ok=True)
+        raise UpdateError("The downloaded update did not match the latest version manifest.")
 
 
 def sha256_file(path: Path) -> str:

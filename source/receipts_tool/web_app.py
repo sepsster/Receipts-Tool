@@ -933,6 +933,10 @@ APP_HTML = r"""<!doctype html>
             <div class="version-value" id="appVersion">-</div>
           </div>
           <div class="version-row">
+            <div class="version-label">Latest version</div>
+            <div class="version-value" id="latestVersion">-</div>
+          </div>
+          <div class="version-row">
             <div class="version-label">Update status</div>
             <div class="version-value" id="updateState">-</div>
           </div>
@@ -1324,6 +1328,7 @@ APP_HTML = r"""<!doctype html>
       const update = state.meta.update || {};
       const isAvailable = !!update.updateAvailable;
       $("appVersion").textContent = state.meta.appVersion ? `v${state.meta.appVersion}` : "Unknown";
+      $("latestVersion").textContent = update.latestVersion ? `v${update.latestVersion}` : "Unknown";
       $("updateState").textContent = updateStateLabel(update);
       $("updateCheckedAt").textContent = update.checkedAt || "Not checked yet";
       $("settingsUpdateDot").hidden = !isAvailable;

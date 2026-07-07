@@ -15,12 +15,13 @@ from receipts_tool.models import Payment, Profile, format_money, parse_payment_d
 from receipts_tool.paths import APP_DIR_ENV, AppPaths, get_paths
 from receipts_tool.pdf_generator import generate_receipt_pdf
 from receipts_tool.storage import ReceiptStore
-from receipts_tool.updater import powershell_executable, write_update_script
+from receipts_tool.updater import is_newer_version, powershell_executable, version_parts, write_update_script
 from receipts_tool.web_app import ensure_persistent_logo, parse_payments
 
 
 def main() -> None:
     assert_project_version()
+    assert_update_version_comparison()
     assert_logo_persistence()
     assert_update_script_can_copy_files()
 
@@ -124,6 +125,14 @@ def main() -> None:
 def assert_project_version() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert pyproject["project"]["version"] == __version__
+
+
+def assert_update_version_comparison() -> None:
+    assert version_parts("1.2.10") == (1, 2, 10)
+    assert is_newer_version("0.2.1", "0.2.0")
+    assert is_newer_version("0.3.0", "0.2.9")
+    assert not is_newer_version("0.2.0", "0.2.0")
+    assert not is_newer_version("0.2.0", "0.2.1")
 
 
 def assert_logo_persistence() -> None:
