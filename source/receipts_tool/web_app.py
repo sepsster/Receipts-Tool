@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from PIL import Image, UnidentifiedImageError
 
+from . import __version__
 from .models import (
     MONTH_NAMES,
     Payment,
@@ -183,6 +184,7 @@ def make_handler(
                         "maxPaymentRows": MAX_PAYMENT_ROWS,
                         "appDir": str(paths.app_dir),
                         "receiptsDir": str(paths.receipts_dir),
+                        "appVersion": __version__,
                         "update": update_checker.snapshot() if update_checker else {},
                     }
                 )
@@ -742,6 +744,30 @@ APP_HTML = r"""<!doctype html>
       color: #6c4d08;
       background: #fff8e8;
     }
+    .version-list {
+      display: grid;
+      gap: 0;
+      margin: 12px 0 14px;
+      max-width: 640px;
+    }
+    .version-row {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+      border-top: 1px solid var(--line);
+      padding: 8px 0;
+    }
+    .version-row:first-child { border-top: 0; }
+    .version-label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .version-value {
+      color: var(--ink);
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
     .toast {
       position: fixed;
       right: 22px;
@@ -762,6 +788,7 @@ APP_HTML = r"""<!doctype html>
     @media (max-width: 860px) {
       header { align-items: flex-start; flex-direction: column; }
       .grid, .row { grid-template-columns: 1fr; }
+      .version-row { grid-template-columns: 1fr; gap: 3px; }
       .payment-grid { grid-template-columns: 36px 58px 1fr; }
       .payment-grid > :nth-child(4), .payment-grid > :nth-child(5) { grid-column: span 1; }
     }
@@ -900,6 +927,20 @@ APP_HTML = r"""<!doctype html>
       </div>
       <div class="panel" style="margin-top:16px">
         <h2>App Updates <span class="update-badge" id="updateBadge" hidden>Update available</span></h2>
+        <div class="version-list">
+          <div class="version-row">
+            <div class="version-label">Installed version</div>
+            <div class="version-value" id="appVersion">-</div>
+          </div>
+          <div class="version-row">
+            <div class="version-label">Update status</div>
+            <div class="version-value" id="updateState">-</div>
+          </div>
+          <div class="version-row">
+            <div class="version-label">Last checked</div>
+            <div class="version-value" id="updateCheckedAt">-</div>
+          </div>
+        </div>
         <div class="sub" id="updateDescription"></div>
         <div class="actions" style="justify-content:flex-start">
           <button id="checkUpdateBtn">Check for Updates</button>
@@ -1282,6 +1323,9 @@ APP_HTML = r"""<!doctype html>
     function renderUpdateInfo() {
       const update = state.meta.update || {};
       const isAvailable = !!update.updateAvailable;
+      $("appVersion").textContent = state.meta.appVersion ? `v${state.meta.appVersion}` : "Unknown";
+      $("updateState").textContent = updateStateLabel(update);
+      $("updateCheckedAt").textContent = update.checkedAt || "Not checked yet";
       $("settingsUpdateDot").hidden = !isAvailable;
       $("updateBadge").hidden = !isAvailable;
       $("updateDescription").textContent = update.message || "";
@@ -1291,6 +1335,23 @@ APP_HTML = r"""<!doctype html>
       if (isAvailable && !state.updateNotified) {
         showUpdateToast();
         state.updateNotified = true;
+      }
+    }
+
+    function updateStateLabel(update) {
+      switch (update.state) {
+        case "available":
+          return "Update available";
+        case "checking":
+          return "Checking";
+        case "current":
+          return "Up to date";
+        case "error":
+          return "Check failed";
+        case "unavailable":
+          return "Unavailable";
+        default:
+          return "Idle";
       }
     }
 

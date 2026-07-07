@@ -4,11 +4,13 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from receipts_tool import __version__
 from receipts_tool.models import Payment, Profile, format_money, parse_payment_date, parse_money_to_cents
 from receipts_tool.paths import APP_DIR_ENV, AppPaths, get_paths
 from receipts_tool.pdf_generator import generate_receipt_pdf
@@ -18,6 +20,7 @@ from receipts_tool.web_app import ensure_persistent_logo, parse_payments
 
 
 def main() -> None:
+    assert_project_version()
     assert_logo_persistence()
     assert_update_script_can_copy_files()
 
@@ -116,6 +119,11 @@ def main() -> None:
 
     render_pdf(pdf_path, ROOT / "tmp" / "pdfs" / "smoke_receipt")
     print(f"Smoke test passed: {pdf_path}")
+
+
+def assert_project_version() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert pyproject["project"]["version"] == __version__
 
 
 def assert_logo_persistence() -> None:
