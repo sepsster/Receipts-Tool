@@ -282,7 +282,8 @@ def write_update_script(path: Path) -> None:
     [Parameter(Mandatory=$true)][string]$Target,
     [Parameter(Mandatory=$true)][string]$Backup,
     [Parameter(Mandatory=$true)][string]$Log,
-    [switch]$NoRestart
+    [switch]$NoRestart,
+    [switch]$SkipSelfTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -296,8 +297,39 @@ function Write-UpdateLog {
     Add-Content -LiteralPath $Log -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
 }
 
+function Test-UpdateExecutable {
+    param([string]$ExePath)
+
+    if ($SkipSelfTest) {
+        Write-UpdateLog "Self-test skipped."
+        return $true
+    }
+
+    try {
+        $process = Start-Process -FilePath $ExePath -ArgumentList "--self-test" -Wait -PassThru -WindowStyle Hidden
+        if ($process.ExitCode -eq 0) {
+            Write-UpdateLog "Self-test passed for '$ExePath'."
+            return $true
+        }
+        Write-UpdateLog "Self-test failed for '$ExePath' with exit code $($process.ExitCode)."
+    } catch {
+        Write-UpdateLog "Self-test could not start for '$ExePath': $($_.Exception.Message)"
+    }
+
+    return $false
+}
+
 Write-UpdateLog "Starting update."
 Start-Sleep -Seconds 2
+
+Write-UpdateLog "Checking downloaded update."
+if (-not (Test-UpdateExecutable -ExePath $NewExe)) {
+    Write-UpdateLog "Downloaded update failed. Restarting existing app without changing files."
+    if (-not $NoRestart) {
+        Start-Process -FilePath $Target
+    }
+    exit 1
+}
 
 try {
     if (Test-Path -LiteralPath $Target) {
@@ -323,6 +355,19 @@ for ($attempt = 1; $attempt -le 90; $attempt++) {
 
 if (-not $updated) {
     Write-UpdateLog "Update failed. Restarting existing app."
+    if (-not $NoRestart) {
+        Start-Process -FilePath $Target
+    }
+    exit 1
+}
+
+Write-UpdateLog "Checking installed update."
+if (-not (Test-UpdateExecutable -ExePath $Target)) {
+    Write-UpdateLog "Installed update failed. Restoring backup."
+    if (Test-Path -LiteralPath $Backup) {
+        Copy-Item -LiteralPath $Backup -Destination $Target -Force
+        Write-UpdateLog "Backup restored."
+    }
     if (-not $NoRestart) {
         Start-Process -FilePath $Target
     }

@@ -175,6 +175,7 @@ def assert_update_script_can_copy_files() -> None:
             "-Log",
             str(log_path),
             "-NoRestart",
+            "-SkipSelfTest",
         ],
         check=True,
         capture_output=True,
