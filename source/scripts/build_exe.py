@@ -12,9 +12,12 @@ from pathlib import Path
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SOURCE_ROOT.parent
 APP_NAME = "Payment Receipt Generator Tool"
+CONTENTS_DIR = "_app"
+# Folder-based (onedir) release, shipped as a zip. The updater downloads this
+# zip, extracts it, and swaps the app binaries in place. See updater.py.
 UPDATE_DOWNLOAD_URL = (
     "https://raw.githubusercontent.com/sepsster/"
-    "Receipts-Tool/master/Payment%20Receipt%20Generator%20Tool.exe"
+    "Receipts-Tool/master/Payment%20Receipt%20Generator%20Tool.zip"
 )
 
 
@@ -35,7 +38,13 @@ def main() -> None:
         "PyInstaller",
         "--noconfirm",
         "--clean",
-        "--onefile",
+        # onedir keeps python3xx.dll on disk beside the exe instead of unpacking
+        # it into %TEMP% on every launch, which antivirus (Bitdefender) blocks.
+        "--onedir",
+        "--contents-directory",
+        CONTENTS_DIR,
+        # UPX-compressed DLLs raise antivirus false positives and are unneeded here.
+        "--noupx",
         "--windowed",
         "--name",
         APP_NAME,
@@ -47,19 +56,37 @@ def main() -> None:
     ]
     subprocess.run(cmd, cwd=SOURCE_ROOT, check=True)
 
-    output_path = PROJECT_ROOT / f"{APP_NAME}.exe"
-    write_update_manifest(output_path)
-    print(f"Built portable app: {output_path}")
+    onedir_path = PROJECT_ROOT / APP_NAME
+    entry_exe = onedir_path / f"{APP_NAME}.exe"
+    if not entry_exe.exists():
+        raise SystemExit(f"Build did not produce the expected executable: {entry_exe}")
+
+    zip_path = build_release_zip(onedir_path)
+    write_update_manifest(zip_path)
+    print(f"Built portable app: {onedir_path}")
+    print(f"Packaged release zip: {zip_path}")
 
 
-def write_update_manifest(output_path: Path) -> None:
+def build_release_zip(onedir_path: Path) -> Path:
+    """Zip the *contents* of the onedir folder so the archive root holds the
+    entry exe and the ``_app`` directory (matching ``entryExe`` in the manifest)."""
+    archive_base = PROJECT_ROOT / APP_NAME
+    zip_path = archive_base.with_suffix(".zip")
+    zip_path.unlink(missing_ok=True)
+    shutil.make_archive(str(archive_base), "zip", root_dir=str(onedir_path))
+    return zip_path
+
+
+def write_update_manifest(zip_path: Path) -> None:
     version = project_version()
     manifest_path = PROJECT_ROOT / "update.json"
     manifest = {
         "version": version,
+        "packageType": "zip",
+        "entryExe": f"{APP_NAME}.exe",
         "downloadUrl": f"{UPDATE_DOWNLOAD_URL}?v={version}",
-        "sha256": sha256_file(output_path),
-        "size": output_path.stat().st_size,
+        "sha256": sha256_file(zip_path),
+        "size": zip_path.stat().st_size,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote update manifest: {manifest_path}")

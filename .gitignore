@@ -5,6 +5,9 @@ build/
 dist/
 *.spec
 
+# PyInstaller --onedir build output (the release is the zipped copy, not this folder)
+/Payment Receipt Generator Tool/
+
 data/
 backups/
 receipts/

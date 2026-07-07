@@ -10,6 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -26,6 +27,8 @@ DEFAULT_UPDATE_URL = (
 )
 DEFAULT_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/sepsster/Receipts-Tool/master/update.json"
 MIN_EXE_BYTES = 1_000_000
+MIN_ZIP_BYTES = 1_000_000
+CONTENTS_DIR = "_app"
 
 
 class UpdateError(RuntimeError):
@@ -94,6 +97,7 @@ class UpdateCheckState:
             manifest = download_update_manifest()
             latest_version = manifest["version"]
             update_url = manifest["download_url"]
+            package_type = manifest["package_type"]
             if not is_newer_version(latest_version, __version__):
                 self._set_status(
                     state="current",
@@ -108,16 +112,21 @@ class UpdateCheckState:
             updates_dir = self.paths.app_dir / "tmp" / "updates"
             updates_dir.mkdir(parents=True, exist_ok=True)
             stamp = time.strftime("%Y%m%d-%H%M%S")
-            downloaded_exe = updates_dir / f"checked-{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.exe"
+            suffix = "zip" if package_type == "zip" else "exe"
+            downloaded_path = updates_dir / f"checked-{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.{suffix}"
             download_executable(
                 update_url,
-                downloaded_exe,
+                downloaded_path,
                 expected_sha256=manifest.get("sha256"),
                 expected_size=manifest.get("size"),
+                expected_kind=package_type,
             )
 
-            if sha256_file(downloaded_exe) == sha256_file(current_exe):
-                downloaded_exe.unlink(missing_ok=True)
+            # For a single-exe package we can short-circuit if the bytes already
+            # match the running exe. A zip can't be compared to the exe, so the
+            # is_newer_version() gate above is what governs there.
+            if package_type != "zip" and sha256_file(downloaded_path) == sha256_file(current_exe):
+                downloaded_path.unlink(missing_ok=True)
                 self._set_status(
                     state="current",
                     message=f"This app is up to date at v{__version__}.",
@@ -129,7 +138,7 @@ class UpdateCheckState:
                 return
 
             with self._lock:
-                self._downloaded_path = downloaded_exe
+                self._downloaded_path = downloaded_path
             self._set_status(
                 state="available",
                 message=f"Version {latest_version} is available on GitHub.",
@@ -200,15 +209,16 @@ def get_update_info() -> dict[str, object]:
     return status
 
 
-def prepare_self_update(paths: AppPaths, downloaded_exe: Path | None = None) -> dict[str, object]:
+def prepare_self_update(paths: AppPaths, downloaded_file: Path | None = None) -> dict[str, object]:
     current_exe = current_executable()
     manifest = download_update_manifest()
     update_url = manifest["download_url"]
     latest_version = manifest["version"]
+    package_type = manifest["package_type"]
     updates_dir = paths.app_dir / "tmp" / "updates"
     updates_dir.mkdir(parents=True, exist_ok=True)
 
-    if downloaded_exe is None and not is_newer_version(latest_version, __version__):
+    if downloaded_file is None and not is_newer_version(latest_version, __version__):
         return {
             "alreadyCurrent": True,
             "restartRequired": False,
@@ -217,7 +227,11 @@ def prepare_self_update(paths: AppPaths, downloaded_exe: Path | None = None) -> 
             "latestVersion": latest_version,
         }
 
+    if package_type == "zip":
+        return _prepare_zip_self_update(paths, current_exe, manifest, downloaded_file)
+
     stamp = time.strftime("%Y%m%d-%H%M%S")
+    downloaded_exe = downloaded_file
     if downloaded_exe is None or not downloaded_exe.exists():
         downloaded_exe = updates_dir / f"{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.exe"
         download_executable(
@@ -256,6 +270,83 @@ def prepare_self_update(paths: AppPaths, downloaded_exe: Path | None = None) -> 
         "latestVersion": latest_version,
         "logPath": str(log_path),
     }
+
+
+def _prepare_zip_self_update(
+    paths: AppPaths,
+    current_exe: Path,
+    manifest: dict[str, object],
+    downloaded_zip: Path | None,
+) -> dict[str, object]:
+    update_url = str(manifest["download_url"])
+    latest_version = str(manifest["version"])
+    entry_exe = str(manifest["entry_exe"])
+    updates_dir = paths.app_dir / "tmp" / "updates"
+    updates_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+
+    if downloaded_zip is None or not downloaded_zip.exists():
+        downloaded_zip = updates_dir / f"{APP_EXE_NAME.removesuffix('.exe')}-{stamp}.zip"
+        download_executable(
+            update_url,
+            downloaded_zip,
+            expected_sha256=manifest.get("sha256"),
+            expected_size=manifest.get("size"),
+            expected_kind="zip",
+        )
+    else:
+        validate_downloaded_zip(
+            downloaded_zip,
+            expected_sha256=manifest.get("sha256"),
+            expected_size=manifest.get("size"),
+        )
+
+    staging_dir = updates_dir / f"staging-{stamp}"
+    staged_root = extract_update_zip(downloaded_zip, staging_dir, entry_exe)
+
+    backup_dir = updates_dir / f"backup-{stamp}"
+    log_path = updates_dir / f"update-{stamp}.log"
+    script_path = updates_dir / f"apply-update-{stamp}.ps1"
+    write_zip_update_script(script_path)
+    launch_zip_update_script(
+        script_path,
+        staged_root=staged_root,
+        install_dir=current_exe.parent,
+        entry_exe=entry_exe,
+        backup_dir=backup_dir,
+        log_path=log_path,
+        downloaded_zip=downloaded_zip,
+        staging_dir=staging_dir,
+    )
+    return {
+        "alreadyCurrent": False,
+        "restartRequired": True,
+        "message": f"Version {latest_version} downloaded. The app will close, install the update, and reopen.",
+        "sourceUrl": update_url,
+        "latestVersion": latest_version,
+        "logPath": str(log_path),
+    }
+
+
+def extract_update_zip(zip_path: Path, staging_dir: Path, entry_exe: str) -> Path:
+    """Extract the update zip and return the directory that holds ``entry_exe``."""
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir, ignore_errors=True)
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(staging_dir)
+    except (zipfile.BadZipFile, OSError) as exc:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise UpdateError(f"Could not extract the downloaded update: {exc}") from exc
+
+    if (staging_dir / entry_exe).exists():
+        return staging_dir
+    found = next((path for path in staging_dir.rglob(entry_exe)), None)
+    if found is None:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise UpdateError("The downloaded update did not contain the application.")
+    return found.parent
 
 
 def get_update_url() -> str:
@@ -320,10 +411,14 @@ def download_update_manifest() -> dict[str, object]:
     download_url = str(raw_manifest.get("downloadUrl", "")).strip() or get_update_url()
     sha256 = str(raw_manifest.get("sha256", "")).strip().lower()
     size = raw_manifest.get("size")
+    package_type = str(raw_manifest.get("packageType", "exe")).strip().lower() or "exe"
+    entry_exe = str(raw_manifest.get("entryExe", "")).strip() or APP_EXE_NAME
     if not version:
         raise UpdateError("The update manifest did not include a version.")
     if not download_url:
         raise UpdateError("The update manifest did not include a download URL.")
+    if package_type not in {"exe", "zip"}:
+        raise UpdateError(f"The update manifest used an unsupported package type: {package_type}")
     if size is not None:
         try:
             size = int(size)
@@ -335,6 +430,8 @@ def download_update_manifest() -> dict[str, object]:
         "download_url": download_url,
         "sha256": sha256 or None,
         "size": size,
+        "package_type": package_type,
+        "entry_exe": entry_exe,
     }
 
 
@@ -373,6 +470,7 @@ def download_executable(
     *,
     expected_sha256: str | None = None,
     expected_size: int | None = None,
+    expected_kind: str = "exe",
 ) -> None:
     request = urllib.request.Request(
         cache_busted_url(update_url),
@@ -396,7 +494,10 @@ def download_executable(
         output_path.unlink(missing_ok=True)
         raise UpdateError(f"Could not save the downloaded update: {exc}") from exc
 
-    validate_downloaded_exe(output_path, expected_sha256=expected_sha256, expected_size=expected_size)
+    if expected_kind == "zip":
+        validate_downloaded_zip(output_path, expected_sha256=expected_sha256, expected_size=expected_size)
+    else:
+        validate_downloaded_exe(output_path, expected_sha256=expected_sha256, expected_size=expected_size)
 
 
 def validate_downloaded_exe(
@@ -416,6 +517,28 @@ def validate_downloaded_exe(
         if file.read(2) != b"MZ":
             path.unlink(missing_ok=True)
             raise UpdateError("The downloaded update was not a Windows executable.")
+    if expected_sha256 and sha256_file(path).lower() != expected_sha256.lower():
+        path.unlink(missing_ok=True)
+        raise UpdateError("The downloaded update did not match the latest version manifest.")
+
+
+def validate_downloaded_zip(
+    path: Path,
+    *,
+    expected_sha256: str | None = None,
+    expected_size: int | None = None,
+) -> None:
+    actual_size = path.stat().st_size
+    if actual_size < MIN_ZIP_BYTES:
+        path.unlink(missing_ok=True)
+        raise UpdateError("The downloaded update looked incomplete.")
+    if expected_size is not None and actual_size != expected_size:
+        path.unlink(missing_ok=True)
+        raise UpdateError("The downloaded update size did not match the latest version manifest.")
+    with path.open("rb") as file:
+        if file.read(2) != b"PK":
+            path.unlink(missing_ok=True)
+            raise UpdateError("The downloaded update was not a zip archive.")
     if expected_sha256 and sha256_file(path).lower() != expected_sha256.lower():
         path.unlink(missing_ok=True)
         raise UpdateError("The downloaded update did not match the latest version manifest.")
@@ -575,6 +698,187 @@ def launch_update_script(
                 str(log_path),
             ],
             cwd=str(current_exe.parent),
+            close_fds=True,
+            creationflags=creationflags,
+        )
+    except OSError as exc:
+        raise UpdateError(f"Could not start the updater helper: {exc}") from exc
+
+
+def write_zip_update_script(path: Path) -> None:
+    path.write_text(
+        """param(
+    [Parameter(Mandatory=$true)][string]$StagedDir,
+    [Parameter(Mandatory=$true)][string]$InstallDir,
+    [Parameter(Mandatory=$true)][string]$EntryExe,
+    [Parameter(Mandatory=$true)][string]$Backup,
+    [Parameter(Mandatory=$true)][string]$Log,
+    [string]$Staging = "",
+    [string]$DownloadedZip = "",
+    [switch]$NoRestart,
+    [switch]$SkipSelfTest
+)
+
+$ErrorActionPreference = "Stop"
+$logDir = Split-Path -Parent $Log
+if ($logDir) {
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+}
+
+$targetExe = Join-Path $InstallDir $EntryExe
+$targetApp = Join-Path $InstallDir "_app"
+$stagedExe = Join-Path $StagedDir $EntryExe
+$stagedApp = Join-Path $StagedDir "_app"
+
+function Write-UpdateLog {
+    param([string]$Message)
+    Add-Content -LiteralPath $Log -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
+}
+
+function Test-UpdateExecutable {
+    param([string]$ExePath)
+
+    if ($SkipSelfTest) {
+        Write-UpdateLog "Self-test skipped."
+        return $true
+    }
+
+    try {
+        $process = Start-Process -FilePath $ExePath -ArgumentList "--self-test" -Wait -PassThru -WindowStyle Hidden
+        if ($process.ExitCode -eq 0) {
+            Write-UpdateLog "Self-test passed for '$ExePath'."
+            return $true
+        }
+        Write-UpdateLog "Self-test failed for '$ExePath' with exit code $($process.ExitCode)."
+    } catch {
+        Write-UpdateLog "Self-test could not start for '$ExePath': $($_.Exception.Message)"
+    }
+
+    return $false
+}
+
+function Restore-Backup {
+    $backupExe = Join-Path $Backup $EntryExe
+    $backupApp = Join-Path $Backup "_app"
+    try {
+        if (Test-Path -LiteralPath $backupApp) {
+            if (Test-Path -LiteralPath $targetApp) { Remove-Item -LiteralPath $targetApp -Recurse -Force }
+            Copy-Item -LiteralPath $backupApp -Destination $targetApp -Recurse -Force
+        }
+        if (Test-Path -LiteralPath $backupExe) {
+            Copy-Item -LiteralPath $backupExe -Destination $targetExe -Force
+        }
+        Write-UpdateLog "Backup restored."
+    } catch {
+        Write-UpdateLog "Restore failed: $($_.Exception.Message)"
+    }
+}
+
+Write-UpdateLog "Starting update."
+Start-Sleep -Seconds 2
+
+Write-UpdateLog "Checking downloaded update."
+if (-not (Test-UpdateExecutable -ExePath $stagedExe)) {
+    Write-UpdateLog "Downloaded update failed. Restarting existing app without changing files."
+    if (-not $NoRestart) { Start-Process -FilePath $targetExe }
+    exit 1
+}
+
+try {
+    New-Item -ItemType Directory -Force -Path $Backup | Out-Null
+    if (Test-Path -LiteralPath $targetExe) {
+        Copy-Item -LiteralPath $targetExe -Destination (Join-Path $Backup $EntryExe) -Force
+    }
+    if (Test-Path -LiteralPath $targetApp) {
+        Copy-Item -LiteralPath $targetApp -Destination (Join-Path $Backup "_app") -Recurse -Force
+    }
+    Write-UpdateLog "Backed up existing application."
+} catch {
+    Write-UpdateLog "Backup failed: $($_.Exception.Message)"
+}
+
+$installed = $false
+for ($attempt = 1; $attempt -le 90; $attempt++) {
+    try {
+        if (Test-Path -LiteralPath $targetApp) { Remove-Item -LiteralPath $targetApp -Recurse -Force }
+        Copy-Item -LiteralPath $stagedApp -Destination $targetApp -Recurse -Force
+        Copy-Item -LiteralPath $stagedExe -Destination $targetExe -Force
+        $installed = $true
+        Write-UpdateLog "Update installed on attempt $attempt."
+        break
+    } catch {
+        Write-UpdateLog "Attempt $attempt failed: $($_.Exception.Message)"
+        Start-Sleep -Seconds 1
+    }
+}
+
+if (-not $installed) {
+    Write-UpdateLog "Update failed to install. Restoring backup."
+    Restore-Backup
+    if (-not $NoRestart) { Start-Process -FilePath $targetExe }
+    exit 1
+}
+
+Write-UpdateLog "Checking installed update."
+if (-not (Test-UpdateExecutable -ExePath $targetExe)) {
+    Write-UpdateLog "Installed update failed. Restoring backup."
+    Restore-Backup
+    if (-not $NoRestart) { Start-Process -FilePath $targetExe }
+    exit 1
+}
+
+Write-UpdateLog "Update complete. Restarting app."
+if (-not $NoRestart) { Start-Process -FilePath $targetExe }
+if ($Staging -and (Test-Path -LiteralPath $Staging)) {
+    Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue
+}
+if ($DownloadedZip -and (Test-Path -LiteralPath $DownloadedZip)) {
+    Remove-Item -LiteralPath $DownloadedZip -Force -ErrorAction SilentlyContinue
+}
+exit 0
+""",
+        encoding="utf-8",
+        newline="\r\n",
+    )
+
+
+def launch_zip_update_script(
+    script_path: Path,
+    *,
+    staged_root: Path,
+    install_dir: Path,
+    entry_exe: str,
+    backup_dir: Path,
+    log_path: Path,
+    downloaded_zip: Path,
+    staging_dir: Path,
+) -> subprocess.Popen:
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
+    try:
+        return subprocess.Popen(
+            [
+                powershell_executable(),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+                "-StagedDir",
+                str(staged_root),
+                "-InstallDir",
+                str(install_dir),
+                "-EntryExe",
+                entry_exe,
+                "-Backup",
+                str(backup_dir),
+                "-Log",
+                str(log_path),
+                "-Staging",
+                str(staging_dir),
+                "-DownloadedZip",
+                str(downloaded_zip),
+            ],
+            cwd=str(install_dir),
             close_fds=True,
             creationflags=creationflags,
         )
