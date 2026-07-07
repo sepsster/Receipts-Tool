@@ -23,7 +23,7 @@ UPDATE_URL_ENV = "RECEIPTS_TOOL_UPDATE_URL"
 UPDATE_MANIFEST_URL_ENV = "RECEIPTS_TOOL_UPDATE_MANIFEST_URL"
 DEFAULT_UPDATE_URL = (
     "https://raw.githubusercontent.com/sepsster/"
-    "Receipts-Tool/master/Payment%20Receipt%20Generator%20Tool.exe"
+    "Receipts-Tool/master/Payment%20Receipt%20Generator%20Tool.zip"
 )
 DEFAULT_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/sepsster/Receipts-Tool/master/update.json"
 MIN_EXE_BYTES = 1_000_000
