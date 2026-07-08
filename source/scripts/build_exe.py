@@ -13,6 +13,10 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SOURCE_ROOT.parent
 APP_NAME = "Payment Receipt Generator Tool"
 CONTENTS_DIR = "_app"
+# Gitignored copy for day-to-day local use. Rebuilds swap only the exe and
+# _app (same swap the updater performs), so the data/, receipts/, backups/,
+# and assets/ folders beside the local exe survive every rebuild.
+LOCAL_APP_DIR = PROJECT_ROOT / "Local App"
 # Folder-based (onedir) release, shipped as a zip. The updater downloads this
 # zip, extracts it, and swaps the app binaries in place. See updater.py.
 UPDATE_DOWNLOAD_URL = (
@@ -22,6 +26,7 @@ UPDATE_DOWNLOAD_URL = (
 
 
 def main() -> None:
+    local_only = "--local" in sys.argv
     if shutil.which("pyinstaller") is None:
         try:
             import PyInstaller  # noqa: F401
@@ -61,10 +66,30 @@ def main() -> None:
     if not entry_exe.exists():
         raise SystemExit(f"Build did not produce the expected executable: {entry_exe}")
 
+    local_exe = refresh_local_app(onedir_path)
+    print(f"Refreshed local app: {local_exe}")
+
+    if local_only:
+        print("Local-only build: release zip and update.json were not touched.")
+        return
+
     zip_path = build_release_zip(onedir_path)
     write_update_manifest(zip_path)
     print(f"Built portable app: {onedir_path}")
     print(f"Packaged release zip: {zip_path}")
+
+
+def refresh_local_app(onedir_path: Path) -> Path:
+    """Copy the freshly built exe and ``_app`` into the gitignored local copy,
+    leaving any data/, receipts/, backups/, and assets/ folders there intact."""
+    LOCAL_APP_DIR.mkdir(parents=True, exist_ok=True)
+    local_contents = LOCAL_APP_DIR / CONTENTS_DIR
+    if local_contents.exists():
+        shutil.rmtree(local_contents)
+    shutil.copytree(onedir_path / CONTENTS_DIR, local_contents)
+    local_exe = LOCAL_APP_DIR / f"{APP_NAME}.exe"
+    shutil.copy2(onedir_path / f"{APP_NAME}.exe", local_exe)
+    return local_exe
 
 
 def build_release_zip(onedir_path: Path) -> Path:

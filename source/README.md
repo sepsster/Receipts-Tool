@@ -32,13 +32,22 @@ Install PyInstaller into a local virtual environment, then run this from the rep
 & ".\.venv\Scripts\python.exe" ".\source\scripts\build_exe.py"
 ```
 
-The finished executable will be in the repository root:
+One build refreshes everything so the artifacts never drift from the source:
 
-```text
-Payment Receipt Generator Tool.exe
+- `Payment Receipt Generator Tool\` — the onedir build output (staging, gitignored)
+- `Payment Receipt Generator Tool.zip` — the release package the updater downloads
+- `update.json` — release manifest (version, sha256, size)
+- `Local App\Payment Receipt Generator Tool.exe` — your local runnable copy (gitignored)
+
+## Run The Local Exe
+
+Double-click `Local App\Payment Receipt Generator Tool.exe`. This copy is completely separate from the release zip: its `data\`, `receipts\`, and `backups\` live inside `Local App\` and survive rebuilds (only the exe and `_app\` are swapped, the same way the updater works).
+
+To rebuild only the local exe without touching the release zip or `update.json`:
+
+```powershell
+& ".\.venv\Scripts\python.exe" ".\source\scripts\build_exe.py" --local
 ```
-
-Move `Payment Receipt Generator Tool.exe` anywhere you want. Data and generated receipts stay beside the executable.
 
 ## App Updates
 

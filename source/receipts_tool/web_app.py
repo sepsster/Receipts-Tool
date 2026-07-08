@@ -593,168 +593,421 @@ APP_HTML = r"""<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Receipts Tool</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='4' width='44' height='56' rx='10' fill='%232e6b4f'/%3E%3Crect x='20' y='18' width='24' height='6' rx='3' fill='%23e9f2ec'/%3E%3Crect x='20' y='30' width='24' height='5' rx='2.5' fill='%23a8cbb7'/%3E%3Crect x='20' y='41' width='15' height='5' rx='2.5' fill='%23a8cbb7'/%3E%3C/svg%3E">
   <style>
     :root {
-      --accent: #df7477;
-      --accent-dark: #c95f63;
-      --ink: #202124;
-      --muted: #667085;
-      --line: #d6d8dc;
-      --panel: #ffffff;
-      --bg: #f5f6f4;
-      --green: #3d7b65;
-      --gold: #b88835;
+      /* Warm neutrals */
+      --bg: #f7f6f3;
+      --surface: #ffffff;
+      --surface-2: #f1efe9;
+      --line: #e6e3db;
+      --line-strong: #d2cec4;
+      --ink: #20281f;
+      --ink-2: #46514a;
+      --muted: #5e6b64;
+      /* Brand — botanical green */
+      --brand: #2e6b4f;
+      --brand-hover: #275c43;
+      --brand-active: #1f4c37;
+      --brand-tint: #e9f2ec;
+      --brand-tint-2: #d7e7dd;
+      /* Semantic */
+      --success: #1e7a46;
+      --success-bg: #e6f4ea;
+      --warning: #9a6700;
+      --warning-bg: #fff3d6;
+      --danger: #b3261e;
+      --danger-bg: #fdecea;
+      /* Depth & shape */
+      --shadow-sm: 0 1px 2px rgba(32, 40, 31, .06);
+      --shadow-md: 0 4px 14px rgba(32, 40, 31, .08);
+      --shadow-lg: 0 18px 44px rgba(32, 40, 31, .18);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --ring: 0 0 0 3px rgba(46, 107, 79, .25);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Segoe UI", Arial, sans-serif;
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
       color: var(--ink);
       background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      accent-color: var(--brand);
     }
-    header {
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid var(--bg); }
+    svg { flex-shrink: 0; }
+
+    /* Top bar */
+    header.topbar {
       display: flex;
       justify-content: space-between;
       gap: 24px;
       align-items: center;
-      padding: 22px 28px 14px;
+      padding: 18px 28px 14px;
     }
-    h1 { margin: 0; font-size: 28px; font-weight: 700; }
-    .sub { color: var(--muted); margin-top: 4px; }
-    .shell { padding: 0 28px 28px; }
-    .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; gap: 14px; align-items: center; min-width: 0; }
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-md);
+      background: var(--brand-tint);
+      color: var(--brand);
+      display: grid;
+      place-items: center;
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+    .version-chip {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--brand);
+      background: var(--brand-tint);
+      padding: 2px 8px;
+      border-radius: 999px;
+      vertical-align: 2px;
+      margin-left: 8px;
+    }
+    .sub { color: var(--muted); font-size: 13px; }
+    .banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 28px 12px;
+      padding: 10px 14px;
+      background: var(--danger-bg);
+      border: 1px solid #f3c2be;
+      border-radius: var(--radius-md);
+      color: var(--danger);
+      font-weight: 600;
+    }
+    .shell { padding: 0 28px 32px; }
+
+    /* Segmented tabs */
+    .tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      max-width: 100%;
+      overflow-x: auto;
+    }
     .tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       border: 0;
       background: transparent;
-      padding: 12px 16px;
+      padding: 8px 16px;
+      border-radius: 999px;
       font: inherit;
-      font-weight: 650;
+      font-weight: 600;
       color: var(--muted);
       cursor: pointer;
-      border-bottom: 3px solid transparent;
+      white-space: nowrap;
+      transition: background .15s ease, color .15s ease;
     }
-    .tab.active { color: var(--ink); border-bottom-color: var(--accent); }
-    .view { display: none; padding-top: 16px; }
-    .view.active { display: block; }
-    .grid { display: grid; grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.6fr); gap: 16px; }
+    .tab:hover:not(.active) { color: var(--ink); }
+    .tab.active { background: var(--surface); color: var(--brand); box-shadow: var(--shadow-sm); }
+    .tab:focus-visible { outline: none; box-shadow: var(--ring); }
+    .tab-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+    .view { display: none; padding-top: 18px; }
+    .view.active { display: block; animation: viewIn .18s ease-out; }
+    @keyframes viewIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .stack { display: grid; gap: 16px; }
+    .grid { display: grid; grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.6fr); gap: 16px; align-items: start; }
+
     .panel {
-      background: var(--panel);
+      background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 18px;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      padding: 20px;
       min-width: 0;
     }
-    .panel h2 { margin: 0 0 14px; font-size: 17px; }
-    label { display: block; font-weight: 650; margin: 12px 0 6px; }
+    .panel h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+      font-size: 16px;
+      font-weight: 650;
+      letter-spacing: -.01em;
+    }
+    .panel h2 > svg { color: var(--brand); }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .panel-head h2 { margin-bottom: 0; }
+    .panel-head + .list, .panel-head + .table-wrap { margin-top: 14px; }
+    .section-title { margin-top: 26px !important; }
+
+    label { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 14px 0 6px; }
     input, select, textarea {
       width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px 11px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      padding: 9px 12px;
       font: inherit;
-      background: #fff;
+      color: var(--ink);
+      background: var(--surface);
+      transition: border-color .15s ease, box-shadow .15s ease;
     }
+    input:hover, select:hover, textarea:hover { border-color: var(--muted); }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); box-shadow: var(--ring); }
+    input::placeholder, textarea::placeholder { color: #9aa59e; }
+    input[type="file"] { padding: 8px; }
+    input[type="file"]::file-selector-button {
+      font: inherit;
+      font-weight: 600;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      margin-right: 12px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    input[type="file"]::file-selector-button:hover { background: var(--surface-2); }
     textarea { resize: vertical; min-height: 88px; }
     .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+    .actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+
+    /* Buttons */
     button {
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      padding: 9px 14px;
       font: inherit;
-      font-weight: 650;
+      font-weight: 600;
       cursor: pointer;
-      background: #fff;
+      background: var(--surface);
       color: var(--ink);
+      transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
     }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button.primary:hover { background: var(--accent-dark); }
-    button.success { background: var(--green); border-color: var(--green); color: #fff; }
-    button.warn { background: #fff8e8; border-color: #e3c57f; color: #6c4d08; }
-    button.danger { background: #fff5f5; border-color: #f0b4b4; color: #9f1c1c; }
-    button:disabled { cursor: not-allowed; opacity: .55; }
+    button:hover { background: var(--surface-2); }
+    button:focus-visible { outline: none; box-shadow: var(--ring); }
+    button.primary, button.success { background: var(--brand); border-color: var(--brand); color: #fff; }
+    button.primary:hover, button.success:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+    button.primary:active, button.success:active { background: var(--brand-active); }
+    button.warn { background: var(--warning-bg); border-color: #ecd9a0; color: #6c4d08; }
+    button.danger { background: transparent; border-color: transparent; color: var(--danger); }
+    button.danger:hover { background: var(--danger-bg); }
+    button.danger-solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+    button.danger-solid:hover { background: #9a1f18; border-color: #9a1f18; }
+    button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+    button.ghost:hover { background: var(--surface-2); color: var(--ink); }
+    button.ghost.quit:hover { background: var(--danger-bg); color: var(--danger); }
+    button.dashed { background: transparent; border: 1px dashed var(--line-strong); color: var(--brand); }
+    button.dashed:hover { background: var(--brand-tint); border-color: var(--brand); }
+    button.icon-btn { padding: 7px; border-color: transparent; background: transparent; color: var(--muted); border-radius: var(--radius-sm); }
+    button.icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+    button.icon-btn.danger-hover:hover { background: var(--danger-bg); color: var(--danger); }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+
+    /* Profile list */
     .list { display: grid; gap: 8px; }
-    .list button { text-align: left; display: grid; gap: 4px; width: 100%; }
-    .list button.selected {
-      border-color: var(--accent);
-      background: #fff8f8;
-      box-shadow: 0 0 0 2px rgba(223,116,119,.24);
+    .list > button {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      text-align: left;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      font-weight: 500;
     }
+    .list > button:hover { background: var(--brand-tint); border-color: var(--brand-tint-2); }
+    .list > button.selected { border-color: var(--brand); background: var(--brand-tint); }
+    .list > button.selected .avatar { background: var(--brand); color: #fff; }
+    .selected-check { color: var(--brand); }
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--brand-tint-2);
+      color: var(--brand);
+      font-size: 13px;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+    }
+    .profile-body { display: grid; gap: 2px; min-width: 0; }
     .profile-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; background: #eef5f1; color: var(--green); }
-    .pill.selected-pill { background: #ffe8ea; color: #a33a3d; }
-    .pill.inactive-pill { background: #f1f3f5; color: #58616d; }
-    .inactive { opacity: .62; }
-    .check-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
-    .check-row input { width: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; }
-    th { color: var(--muted); font-size: 13px; }
-    td.money, th.money { text-align: right; }
+    .pill {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      background: var(--surface-2);
+      color: var(--ink-2);
+    }
+    .pill.active-pill { background: var(--success-bg); color: var(--success); }
+    .pill.selected-pill { background: var(--brand); color: #fff; }
+    .pill.inactive-pill { background: var(--surface-2); color: var(--muted); }
+    .inactive { opacity: .6; }
+    .check-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 14px; font-weight: 500; color: var(--ink); }
+    .check-row input { width: 16px; height: 16px; }
+
+    /* Payments */
+    .payments-well {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 14px;
+    }
+    .payments-well .dashed { width: 100%; margin-top: 4px; }
     .payment-grid {
       display: grid;
-      grid-template-columns: 38px 58px minmax(150px, 1fr) minmax(110px, 160px) 76px;
+      grid-template-columns: 28px 32px minmax(140px, 1fr) minmax(130px, 180px) 38px;
       gap: 8px;
       align-items: center;
       margin-bottom: 8px;
     }
-    .payment-grid input[type="checkbox"] { width: 18px; height: 18px; justify-self: start; }
-    .payment-head { color: var(--muted); font-weight: 700; font-size: 13px; }
-    .total {
-      font-size: 22px;
-      font-weight: 750;
-      color: var(--green);
-      margin-left: auto;
+    .payment-grid input[type="checkbox"] { width: 16px; height: 16px; justify-self: center; }
+    .payment-head {
+      color: var(--muted);
+      font-weight: 650;
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 10px;
     }
+    .payment-head > div:nth-child(2) { text-align: center; cursor: help; }
+    .row-num { color: var(--muted); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+    .amount-wrap { position: relative; display: block; min-width: 0; }
+    .amount-prefix { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+    .amount-wrap input { padding-left: 26px; }
+    .total-row {
+      display: flex;
+      justify-content: flex-end;
+      align-items: baseline;
+      gap: 12px;
+      border-top: 1px solid var(--line-strong);
+      margin-top: 12px;
+      padding-top: 10px;
+    }
+    .total-label { color: var(--muted); font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
+    .total { font-size: 22px; font-weight: 750; color: var(--brand); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+
+    /* Status lines */
     .status {
       min-height: 24px;
       color: var(--muted);
-      margin-top: 10px;
+      margin-top: 12px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    .status.error { color: #b42318; }
-    .status.ok { color: var(--green); }
-    .footer-actions { display: flex; gap: 10px; justify-content: space-between; align-items: center; }
+    .status.error { color: var(--danger); font-weight: 600; }
+    .status.ok { color: var(--success); font-weight: 600; }
+    .status.error::before, .status.ok::before {
+      content: "";
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      background: currentColor;
+      -webkit-mask: var(--status-icon) center / contain no-repeat;
+      mask: var(--status-icon) center / contain no-repeat;
+    }
+    .status.ok { --status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='8 12.5 11 15.5 16 9.5'/%3E%3C/svg%3E"); }
+    .status.error { --status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='7.5' x2='12' y2='13'/%3E%3Ccircle cx='12' cy='16.5' r='.5'/%3E%3C/svg%3E"); }
+    .footer-actions { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: 11px 10px; text-align: left; }
+    th {
+      color: var(--muted);
+      font-size: 11.5px;
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      border-bottom-color: var(--line-strong);
+    }
+    tbody tr { transition: background .12s ease; }
+    tbody tr:hover { background: var(--brand-tint); }
+    td.money, th.money { text-align: right; font-variant-numeric: tabular-nums; }
+    td.nowrap { white-space: nowrap; }
+    .row-actions { display: flex; gap: 2px; justify-content: flex-end; }
+    .pdf-cell a { color: var(--brand); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+    .pdf-cell a:hover { text-decoration: underline; }
+
+    /* Empty states */
+    .empty {
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      padding: 30px 12px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .empty svg { color: var(--line-strong); margin-bottom: 6px; }
+    .empty strong { color: var(--ink-2); font-size: 14px; }
+    .empty span { font-size: 13px; }
+
+    /* Logo */
     .logo-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
     .logo-preview {
-      width: 120px;
-      height: 120px;
+      width: 116px;
+      height: 116px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       object-fit: contain;
-      background: #fff;
-      padding: 8px;
+      background: var(--surface);
+      padding: 10px;
+      box-shadow: var(--shadow-sm);
     }
-    .tab-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-left: 6px;
-      background: var(--accent);
-      vertical-align: middle;
-    }
+
+    /* Updates */
     .update-badge {
       display: inline-flex;
       align-items: center;
-      border: 1px solid #e3c57f;
+      gap: 6px;
+      border: 1px solid #ecd9a0;
       border-radius: 999px;
-      padding: 3px 8px;
-      margin-left: 8px;
-      font-size: 12px;
-      color: #6c4d08;
-      background: #fff8e8;
+      padding: 3px 10px;
+      margin-left: 4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--warning);
+      background: var(--warning-bg);
     }
-    .update-progress {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin: 10px 0 2px;
-      max-width: 640px;
-    }
-    .update-progress progress {
+    .update-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); animation: pulse 2s ease-in-out infinite; }
+    .update-progress { display: flex; align-items: center; gap: 12px; margin: 12px 0 2px; max-width: 640px; }
+    .progress-track {
       flex: 1;
-      height: 14px;
+      height: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
     }
+    .progress-fill { height: 100%; width: 0; background: var(--brand); border-radius: 999px; transition: width .2s ease; }
+    .progress-fill.indeterminate { width: 40%; animation: slide 1.2s ease-in-out infinite; }
+    @keyframes slide { from { margin-left: -40%; } to { margin-left: 100%; } }
     .update-progress-label {
       font-size: 13px;
       color: var(--muted);
@@ -766,7 +1019,7 @@ APP_HTML = r"""<!doctype html>
       width: 30px;
       height: 30px;
       border: 3px solid var(--line);
-      border-top-color: var(--green);
+      border-top-color: var(--brand);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 18px 0;
@@ -784,7 +1037,7 @@ APP_HTML = r"""<!doctype html>
       gap: 14px;
       align-items: center;
       border-top: 1px solid var(--line);
-      padding: 8px 0;
+      padding: 9px 0;
     }
     .version-row:first-child { border-top: 0; }
     .version-label {
@@ -795,61 +1048,118 @@ APP_HTML = r"""<!doctype html>
       color: var(--ink);
       font-weight: 650;
       overflow-wrap: anywhere;
+      font-variant-numeric: tabular-nums;
     }
+
+    /* Toast */
     .toast {
       position: fixed;
       right: 22px;
       bottom: 22px;
-      z-index: 10;
-      width: min(360px, calc(100vw - 44px));
+      z-index: 20;
+      display: flex;
+      gap: 12px;
+      width: min(380px, calc(100vw - 44px));
       border: 1px solid var(--line);
-      border-left: 5px solid var(--accent);
-      border-radius: 8px;
-      background: #fff;
-      box-shadow: 0 16px 36px rgba(32, 33, 36, .18);
-      padding: 14px;
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      box-shadow: var(--shadow-lg);
+      padding: 16px;
+      animation: toastIn .25s ease-out;
     }
-    .toast-title { font-weight: 750; margin-bottom: 4px; }
-    .toast-body { color: var(--muted); line-height: 1.35; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .toast-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--brand-tint);
+      color: var(--brand);
+      display: grid;
+      place-items: center;
+    }
+    .toast-title { font-weight: 700; margin-bottom: 2px; }
+    .toast-body { color: var(--muted); line-height: 1.4; font-size: 13px; }
     .toast-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      background: rgba(32, 40, 31, .4);
+      backdrop-filter: blur(2px);
+      animation: fadeIn .15s ease-out;
+      padding: 20px;
+    }
+    @keyframes fadeIn { from { opacity: 0; } }
+    .modal {
+      width: min(430px, 100%);
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 22px;
+      animation: modalIn .18s ease-out;
+    }
+    @keyframes modalIn { from { opacity: 0; transform: scale(.97) translateY(6px); } to { opacity: 1; transform: none; } }
+    .modal h3 { margin: 0 0 8px; font-size: 17px; letter-spacing: -.01em; }
+    .modal p { margin: 0; color: var(--muted); line-height: 1.5; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
     [hidden] { display: none !important; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
     @media (max-width: 860px) {
-      header { align-items: flex-start; flex-direction: column; }
+      header.topbar { align-items: flex-start; flex-direction: column; }
+      .banner { margin: 0 16px 12px; }
+      .shell { padding: 0 16px 24px; }
       .grid, .row { grid-template-columns: 1fr; }
       .version-row { grid-template-columns: 1fr; gap: 3px; }
-      .payment-grid { grid-template-columns: 36px 58px 1fr; }
-      .payment-grid > :nth-child(4), .payment-grid > :nth-child(5) { grid-column: span 1; }
+      .payment-grid { grid-template-columns: 24px 28px minmax(110px, 1fr) minmax(110px, 1fr) 34px; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>Receipts Tool</h1>
-      <div class="sub">Local profiles, standardized payment receipts, and PDF history. Closing this browser tab closes the app.</div>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h14v18l-2.4-1.8-2.3 1.8-2.3-1.8L9.7 21l-2.3-1.8L5 21z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg>
+      </span>
+      <div>
+        <h1>Receipts Tool<span class="version-chip" id="headerVersion" hidden></span></h1>
+        <div class="sub">Profiles, payment receipts, and PDF history &mdash; all local. Closing this tab closes the app.</div>
+      </div>
     </div>
-    <button class="warn" id="quitBtn">Close App</button>
+    <button class="ghost quit" id="quitBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>Close App</button>
   </header>
+  <div class="banner" id="appError" hidden>
+    <span id="appErrorText"></span>
+    <button class="icon-btn" id="appErrorDismiss" aria-label="Dismiss error">&#10005;</button>
+  </div>
   <main class="shell">
     <nav class="tabs">
-      <button class="tab active" data-view="profiles">Profiles</button>
-      <button class="tab" data-view="generate">Generate Receipt</button>
-      <button class="tab" data-view="history">History</button>
-      <button class="tab" data-view="settings">Settings<span class="tab-dot" id="settingsUpdateDot" hidden></span></button>
+      <button class="tab active" data-view="profiles"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Profiles</button>
+      <button class="tab" data-view="generate"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>Generate</button>
+      <button class="tab" data-view="history"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History</button>
+      <button class="tab" data-view="settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings<span class="tab-dot" id="settingsUpdateDot" hidden></span></button>
     </nav>
 
     <section id="profiles" class="view active">
       <div class="grid">
         <div class="panel">
-          <h2>Saved Profiles</h2>
+          <div class="panel-head">
+            <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Saved Profiles</h2>
+            <button class="ghost" id="refreshProfilesBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Refresh</button>
+          </div>
           <div id="profileList" class="list"></div>
-          <div class="actions" style="justify-content:flex-start">
-            <button id="newProfileBtn">New Profile</button>
-            <button id="refreshProfilesBtn">Refresh</button>
+          <div class="actions" style="justify-content:stretch">
+            <button class="dashed" id="newProfileBtn" style="flex:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Profile</button>
           </div>
         </div>
         <div class="panel">
-          <h2>Profile Details</h2>
+          <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Profile Details</h2>
           <input type="hidden" id="profileId">
           <div class="row">
             <div><label>Child name</label><input id="childName" autocomplete="off"></div>
@@ -885,7 +1195,7 @@ APP_HTML = r"""<!doctype html>
 
     <section id="generate" class="view">
       <div class="panel">
-        <h2>Receipt Details</h2>
+        <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Receipt Details</h2>
         <div class="row">
           <div><label>Profile</label><select id="receiptProfile"></select></div>
           <div class="row">
@@ -893,18 +1203,18 @@ APP_HTML = r"""<!doctype html>
             <div><label>Year</label><input id="receiptYear" type="number" min="2020" max="2035"></div>
           </div>
         </div>
-        <h2 style="margin-top:24px">Payments</h2>
-        <div class="payment-grid payment-head"><div>#</div><div>Note</div><div>Date</div><div>Amount</div><div></div></div>
-        <div id="paymentRows"></div>
-        <div class="actions">
-          <button id="addPaymentBtn">Add Payment</button>
-          <div class="total" id="receiptTotal">$0.00</div>
+        <h2 class="section-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Payments</h2>
+        <div class="payments-well">
+          <div class="payment-grid payment-head"><div>#</div><div title="Check a row to print an asterisk that points to the note">&#65290;</div><div>Date</div><div>Amount</div><div></div></div>
+          <div id="paymentRows"></div>
+          <button class="dashed" id="addPaymentBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Payment</button>
+          <div class="total-row"><span class="total-label">Total</span><span class="total" id="receiptTotal">$0.00</span></div>
         </div>
         <label>Optional Note</label>
-        <textarea id="receiptNote"></textarea>
-        <div class="footer-actions" style="margin-top:16px">
-          <button id="openReceiptsBtn">Open Receipts Folder</button>
-          <button class="success" id="generateBtn">Generate PDF</button>
+        <textarea id="receiptNote" placeholder="Printed on the receipt next to the asterisk"></textarea>
+        <div class="footer-actions">
+          <button id="openReceiptsBtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open Receipts Folder</button>
+          <button class="primary" id="generateBtn">Generate PDF</button>
         </div>
         <div id="generateStatus" class="status"></div>
       </div>
@@ -912,93 +1222,170 @@ APP_HTML = r"""<!doctype html>
 
     <section id="history" class="view">
       <div class="panel">
-        <div class="footer-actions">
-          <h2>Generated Receipts</h2>
-          <button id="refreshHistoryBtn">Refresh</button>
+        <div class="panel-head">
+          <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Generated Receipts</h2>
+          <button class="ghost" id="refreshHistoryBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Refresh</button>
         </div>
-        <table>
-          <thead><tr><th>Generated</th><th>Child</th><th>Period</th><th class="money">Total</th><th>PDF</th><th></th></tr></thead>
-          <tbody id="historyRows"></tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Generated</th><th>Child</th><th>Period</th><th class="money">Total</th><th>PDF</th><th></th></tr></thead>
+            <tbody id="historyRows"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
     <section id="settings" class="view">
-      <div class="panel">
-        <h2>Business Defaults</h2>
-        <div class="row">
-          <div><label>Business name</label><input id="business_name"></div>
-          <div><label>Filename token</label><input id="filename_token"></div>
-        </div>
-        <div class="row">
-          <div><label>Address line 1</label><input id="business_address_line1"></div>
-          <div><label>Address line 2</label><input id="business_address_line2"></div>
-        </div>
-        <div class="row">
-          <div><label>Phone</label><input id="business_phone"></div>
-          <div><label>Email</label><input id="business_email"></div>
-        </div>
-        <div class="actions"><button class="primary" id="saveSettingsBtn">Save Settings</button></div>
-        <div id="settingsStatus" class="status"></div>
-      </div>
-      <div class="panel" style="margin-top:16px">
-        <h2>Receipt Logo</h2>
-        <div class="logo-row">
-          <img class="logo-preview" id="logoPreview" src="/logo" alt="">
-          <div style="flex:1; min-width:240px">
-            <label>Logo image</label>
-            <input id="logoFile" type="file" accept="image/*">
+      <div class="stack">
+        <div class="panel">
+          <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Business Defaults</h2>
+          <div class="row">
+            <div><label>Business name</label><input id="business_name"></div>
+            <div><label>Filename token</label><input id="filename_token"></div>
           </div>
-        </div>
-        <div class="actions"><button class="primary" id="saveLogoBtn">Save Logo</button></div>
-        <div id="logoStatus" class="status"></div>
-      </div>
-      <div class="panel" style="margin-top:16px">
-        <h2>App Updates <span class="update-badge" id="updateBadge" hidden>Update available</span></h2>
-        <div class="version-list">
-          <div class="version-row">
-            <div class="version-label">Installed version</div>
-            <div class="version-value" id="appVersion">-</div>
+          <div class="row">
+            <div><label>Address line 1</label><input id="business_address_line1"></div>
+            <div><label>Address line 2</label><input id="business_address_line2"></div>
           </div>
-          <div class="version-row">
-            <div class="version-label">Latest version</div>
-            <div class="version-value" id="latestVersion">-</div>
+          <div class="row">
+            <div><label>Phone</label><input id="business_phone"></div>
+            <div><label>Email</label><input id="business_email"></div>
           </div>
-          <div class="version-row">
-            <div class="version-label">Update status</div>
-            <div class="version-value" id="updateState">-</div>
+          <div class="actions"><button class="primary" id="saveSettingsBtn">Save Settings</button></div>
+          <div id="settingsStatus" class="status"></div>
+        </div>
+        <div class="panel">
+          <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Receipt Logo</h2>
+          <div class="logo-row">
+            <img class="logo-preview" id="logoPreview" src="/logo" alt="Current receipt logo">
+            <div style="flex:1; min-width:240px">
+              <label>Logo image</label>
+              <input id="logoFile" type="file" accept="image/*">
+            </div>
           </div>
-          <div class="version-row">
-            <div class="version-label">Last checked</div>
-            <div class="version-value" id="updateCheckedAt">-</div>
+          <div class="actions"><button class="primary" id="saveLogoBtn">Save Logo</button></div>
+          <div id="logoStatus" class="status"></div>
+        </div>
+        <div class="panel">
+          <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>App Updates <span class="update-badge" id="updateBadge" hidden><span class="dot"></span>Update available</span></h2>
+          <div class="version-list">
+            <div class="version-row">
+              <div class="version-label">Installed version</div>
+              <div class="version-value" id="appVersion">-</div>
+            </div>
+            <div class="version-row">
+              <div class="version-label">Latest version</div>
+              <div class="version-value" id="latestVersion">-</div>
+            </div>
+            <div class="version-row">
+              <div class="version-label">Update status</div>
+              <div class="version-value" id="updateState">-</div>
+            </div>
+            <div class="version-row">
+              <div class="version-label">Last checked</div>
+              <div class="version-value" id="updateCheckedAt">-</div>
+            </div>
           </div>
+          <div class="sub" id="updateDescription"></div>
+          <div class="update-progress" id="updateProgressWrap" hidden>
+            <div class="progress-track"><div class="progress-fill" id="updateProgress"></div></div>
+            <span class="update-progress-label" id="updateProgressLabel">0%</span>
+          </div>
+          <div class="actions" style="justify-content:flex-start">
+            <button id="checkUpdateBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Check for Updates</button>
+            <button class="primary" id="updateBtn">Install Update</button>
+          </div>
+          <div id="updateStatus" class="status"></div>
         </div>
-        <div class="sub" id="updateDescription"></div>
-        <div class="update-progress" id="updateProgressWrap" hidden>
-          <progress id="updateProgress" max="100" value="0"></progress>
-          <span class="update-progress-label" id="updateProgressLabel">0%</span>
-        </div>
-        <div class="actions" style="justify-content:flex-start">
-          <button id="checkUpdateBtn">Check for Updates</button>
-          <button class="success" id="updateBtn">Install Update</button>
-        </div>
-        <div id="updateStatus" class="status"></div>
       </div>
     </section>
   </main>
 
   <div class="toast" id="updateToast" hidden>
-    <div class="toast-title">Update Available</div>
-    <div class="toast-body">A newer version is ready to install from GitHub.</div>
-    <div class="toast-actions">
-      <button id="toastDismissBtn">Dismiss</button>
-      <button class="success" id="toastSettingsBtn">Open Settings</button>
+    <div class="toast-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="8" x2="12" y2="16"/></svg></div>
+    <div style="min-width:0; flex:1">
+      <div class="toast-title">Update Available</div>
+      <div class="toast-body">A newer version is ready to install from GitHub.</div>
+      <div class="toast-actions">
+        <button id="toastDismissBtn">Dismiss</button>
+        <button class="primary" id="toastSettingsBtn">Open Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <h3 id="modalTitle"></h3>
+      <p id="modalBody"></p>
+      <div class="modal-actions">
+        <button id="modalCancelBtn">Cancel</button>
+        <button class="primary" id="modalConfirmBtn">Confirm</button>
+      </div>
     </div>
   </div>
 
   <script>
     const state = { profiles: [], history: [], meta: {}, paymentRows: [], updateNotified: false, selectedProfileId: null };
     const $ = (id) => document.getElementById(id);
+
+    const ICONS = {
+      trash: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+      open: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
+      check: `<svg class="selected-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+      fileEmpty: `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+      usersEmpty: `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
+    };
+
+    function initials(name) {
+      const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return "?";
+      return parts.slice(0, 2).map(part => part[0].toUpperCase()).join("");
+    }
+
+    function baseName(path) {
+      return String(path || "").split(/[\\/]/).pop();
+    }
+
+    function formatTimestamp(value) {
+      const parsed = new Date(String(value || "").replace(" ", "T"));
+      if (Number.isNaN(parsed.getTime())) return String(value || "");
+      return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+        + " · " + parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    }
+
+    function showAppError(message) {
+      $("appErrorText").textContent = message;
+      $("appError").hidden = false;
+    }
+
+    function showConfirm({ title, body, confirmLabel = "Confirm", cancelLabel = "Cancel", danger = false }) {
+      return new Promise(resolve => {
+        const overlay = $("modalOverlay");
+        const confirmBtn = $("modalConfirmBtn");
+        const cancelBtn = $("modalCancelBtn");
+        $("modalTitle").textContent = title;
+        $("modalBody").textContent = body;
+        confirmBtn.textContent = confirmLabel;
+        cancelBtn.textContent = cancelLabel;
+        confirmBtn.className = danger ? "danger-solid" : "primary";
+        const previousFocus = document.activeElement;
+        function close(result) {
+          overlay.hidden = true;
+          document.removeEventListener("keydown", onKey);
+          if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
+          resolve(result);
+        }
+        function onKey(event) {
+          if (event.key === "Escape") close(false);
+        }
+        confirmBtn.onclick = () => close(true);
+        cancelBtn.onclick = () => close(false);
+        overlay.onclick = (event) => { if (event.target === overlay) close(false); };
+        document.addEventListener("keydown", onKey);
+        overlay.hidden = false;
+        confirmBtn.focus();
+      });
+    }
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -1073,7 +1460,7 @@ APP_HTML = r"""<!doctype html>
       const list = $("profileList");
       list.innerHTML = "";
       if (!state.profiles.length) {
-        list.innerHTML = "<div class='sub'>No profiles yet.</div>";
+        list.innerHTML = `<div class="empty">${ICONS.usersEmpty}<strong>No profiles yet</strong><span>Add a child profile to start generating receipts.</span></div>`;
         return;
       }
       state.profiles.forEach(profile => {
@@ -1081,16 +1468,20 @@ APP_HTML = r"""<!doctype html>
         btn.dataset.id = profile.id;
         const isSelected = Number(profile.id) === state.selectedProfileId;
         btn.className = [isSelected ? "selected" : "", profile.active ? "" : "inactive"].filter(Boolean).join(" ");
-        const activeBadge = isSelected && profile.active
-          ? `<span class="pill selected-pill">Selected / Active</span>`
-          : (profile.active ? `<span class="pill">Active</span>` : `<span class="pill inactive-pill">Hidden</span>`);
+        const activeBadge = isSelected
+          ? `<span class="pill selected-pill">Selected</span>`
+          : (profile.active ? `<span class="pill active-pill">Active</span>` : `<span class="pill inactive-pill">Hidden</span>`);
         btn.innerHTML = `
-          <div class="profile-title">
-            <strong>${escapeHtml(profile.child_name)}</strong>
-            <span class="pill">${escapeHtml(profile.status || "No status")}</span>
-            ${activeBadge}
-          </div>
-          <div class="sub">${escapeHtml(profile.parent1_name || "")}</div>
+          <span class="avatar" aria-hidden="true">${escapeHtml(initials(profile.child_name))}</span>
+          <span class="profile-body">
+            <span class="profile-title">
+              <strong>${escapeHtml(profile.child_name)}</strong>
+              <span class="pill">${escapeHtml(profile.status || "No status")}</span>
+              ${activeBadge}
+            </span>
+            <span class="sub">${escapeHtml(profile.parent1_name || "")}</span>
+          </span>
+          ${isSelected ? ICONS.check : ""}
         `;
         btn.onclick = () => selectProfile(profile);
         list.appendChild(btn);
@@ -1186,11 +1577,11 @@ APP_HTML = r"""<!doctype html>
         const wrap = document.createElement("div");
         wrap.className = "payment-grid";
         wrap.innerHTML = `
-          <div>${index + 1}</div>
-          <input type="checkbox" data-field="marker" data-index="${index}" ${row.marker ? "checked" : ""} title="Print an asterisk for the optional note">
-          <input data-field="date" data-index="${index}" value="${escapeAttr(row.date)}" placeholder="mm/dd/yyyy" inputmode="numeric" maxlength="10">
-          <input data-field="amount" data-index="${index}" value="${escapeAttr(row.amount)}" placeholder="100.00">
-          <button data-remove="${index}">Remove</button>
+          <div class="row-num">${index + 1}</div>
+          <input type="checkbox" data-field="marker" data-index="${index}" ${row.marker ? "checked" : ""} title="Print an asterisk next to this payment, referencing the note">
+          <input data-field="date" data-index="${index}" value="${escapeAttr(row.date)}" placeholder="mm/dd/yyyy" inputmode="numeric" maxlength="10" aria-label="Payment date">
+          <span class="amount-wrap"><span class="amount-prefix">$</span><input data-field="amount" data-index="${index}" value="${escapeAttr(row.amount)}" placeholder="0.00" aria-label="Payment amount"></span>
+          <button class="icon-btn danger-hover" data-remove="${index}" aria-label="Remove payment row" title="Remove row">${ICONS.trash}</button>
         `;
         root.appendChild(wrap);
       });
@@ -1259,7 +1650,13 @@ APP_HTML = r"""<!doctype html>
         await loadHistory();
       } catch (error) {
         if (error.status === 409 && error.payload && error.payload.replaceRequired) {
-          if (confirm(`${error.payload.error}\n\nReplace it?`)) {
+          const replaceIt = await showConfirm({
+            title: "Replace existing receipt?",
+            body: `${error.payload.error} Generating again will overwrite the existing PDF.`,
+            confirmLabel: "Replace",
+            danger: true
+          });
+          if (replaceIt) {
             await generateReceipt(true);
           }
           return;
@@ -1273,20 +1670,22 @@ APP_HTML = r"""<!doctype html>
       const body = $("historyRows");
       body.innerHTML = "";
       if (!state.history.length) {
-        body.innerHTML = "<tr><td colspan='6' class='sub'>No generated receipts yet.</td></tr>";
+        body.innerHTML = `<tr><td colspan="6"><div class="empty">${ICONS.fileEmpty}<strong>No receipts yet</strong><span>Receipts you generate will appear here.</span></div></td></tr>`;
         return;
       }
       state.history.forEach(item => {
         const row = document.createElement("tr");
         row.innerHTML = `
-          <td>${escapeHtml(item.generated_at)}</td>
+          <td class="nowrap">${escapeHtml(formatTimestamp(item.generated_at))}</td>
           <td>${escapeHtml(item.child_name)}</td>
-          <td>${escapeHtml(item.period)}</td>
+          <td class="nowrap">${escapeHtml(item.period)}</td>
           <td class="money">${escapeHtml(item.total)}</td>
-          <td><a href="${item.pdf_url}" target="_blank">${escapeHtml(item.pdf_path)}</a></td>
+          <td class="pdf-cell"><a href="${item.pdf_url}" target="_blank" title="${escapeAttr(item.pdf_path)}">${escapeHtml(baseName(item.pdf_path))}</a></td>
           <td>
-            <button data-open="${escapeAttr(item.pdf_path)}">Open</button>
-            <button class="danger" data-delete="${item.id}" data-label="${escapeAttr(item.child_name + " " + item.period)}">Delete</button>
+            <div class="row-actions">
+              <button class="icon-btn" data-open="${escapeAttr(item.pdf_path)}" aria-label="Open PDF" title="Open PDF">${ICONS.open}</button>
+              <button class="icon-btn danger-hover" data-delete="${item.id}" data-label="${escapeAttr(item.child_name + " " + item.period)}" aria-label="Delete receipt" title="Delete receipt">${ICONS.trash}</button>
+            </div>
           </td>
         `;
         body.appendChild(row);
@@ -1296,7 +1695,13 @@ APP_HTML = r"""<!doctype html>
       });
       body.querySelectorAll("button[data-delete]").forEach(button => {
         button.onclick = async () => {
-          if (!confirm(`Delete this receipt from history and remove its PDF file?\n\n${button.dataset.label}`)) return;
+          const deleteIt = await showConfirm({
+            title: "Delete receipt?",
+            body: `${button.dataset.label} will be removed from history and its PDF file deleted. This cannot be undone.`,
+            confirmLabel: "Delete",
+            danger: true
+          });
+          if (!deleteIt) return;
           await api("/api/delete-receipt", { method: "POST", body: JSON.stringify({ id: Number(button.dataset.delete) }) });
           await loadHistory();
         };
@@ -1373,7 +1778,8 @@ APP_HTML = r"""<!doctype html>
       $("updateProgressWrap").hidden = !downloading;
       if (downloading) {
         const bar = $("updateProgress");
-        if (pct === null) { bar.removeAttribute("value"); } else { bar.value = pct; }
+        bar.classList.toggle("indeterminate", pct === null);
+        bar.style.width = (pct === null) ? "40%" : `${pct}%`;
         $("updateProgressLabel").textContent = (pct === null) ? "…" : `${pct}%`;
       }
       setStatus("updateStatus", update.message || "", isAvailable ? "ok" : (update.state === "error" ? "error" : ""));
@@ -1435,7 +1841,12 @@ APP_HTML = r"""<!doctype html>
     }
 
     async function updateApp() {
-      if (!confirm("Download the latest app from GitHub, close this app, and reopen it after updating?")) return;
+      const installIt = await showConfirm({
+        title: "Install update?",
+        body: "The latest version will be downloaded from GitHub. The app closes, installs the update, and reopens automatically.",
+        confirmLabel: "Install Update"
+      });
+      if (!installIt) return;
       $("updateBtn").disabled = true;
       setStatus("updateStatus", "Preparing update...");
       try {
@@ -1475,6 +1886,7 @@ APP_HTML = r"""<!doctype html>
     };
     $("checkUpdateBtn").onclick = checkForUpdates;
     $("updateBtn").onclick = updateApp;
+    $("appErrorDismiss").onclick = () => $("appError").hidden = true;
     $("toastDismissBtn").onclick = () => $("updateToast").hidden = true;
     $("toastSettingsBtn").onclick = () => {
       $("updateToast").hidden = true;
@@ -1494,6 +1906,10 @@ APP_HTML = r"""<!doctype html>
 
     async function boot() {
       state.meta = await api("/api/meta");
+      if (state.meta.appVersion) {
+        $("headerVersion").textContent = `v${state.meta.appVersion}`;
+        $("headerVersion").hidden = false;
+      }
       $("receiptYear").value = state.meta.currentYear;
       $("receiptMonth").innerHTML = state.meta.months.map((name, index) => `<option value="${index + 1}">${name}</option>`).join("");
       $("receiptMonth").value = state.meta.currentMonth;
@@ -1502,7 +1918,7 @@ APP_HTML = r"""<!doctype html>
       await Promise.all([loadProfiles(), loadSettings(), loadHistory()]);
       addPaymentRow();
     }
-    boot().catch(error => alert(error.message));
+    boot().catch(error => showAppError(`The app could not load: ${error.message}`));
   </script>
 </body>
 </html>

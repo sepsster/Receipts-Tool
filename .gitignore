@@ -8,6 +8,9 @@ dist/
 # PyInstaller --onedir build output (the release is the zipped copy, not this folder)
 /Payment Receipt Generator Tool/
 
+# Local runnable copy refreshed by build_exe.py; its data stays local, never released
+/Local App/
+
 data/
 backups/
 receipts/
